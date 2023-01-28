@@ -1,0 +1,21 @@
+
+
+<mat-toolbar color="primary">
+  <button mat-icon-button class="example-icon" aria-label="Example icon-button with menu icon">
+    <mat-icon>menu</mat-icon>
+  </button>
+  <span>AdaptUI 3.0 Web IDE</span>
+  <span class="example-spacer"></span>
+  <button mat-icon-button class="example-icon favorite-icon" aria-label="Example icon-button with heart icon">
+    <mat-icon>favorite</mat-icon>
+  </button>
+  <button mat-icon-button class="example-icon" aria-label="Example icon-button with share icon">
+    <mat-icon>share</mat-icon>
+  </button>
+</mat-toolbar>
+
+<mat-tab-group id="mainViewSelect">
+  <mat-tab label="IFML"> <app-tiny-ifml></app-tiny-ifml> </mat-tab>
+  <mat-tab label="CONTEXTML"> <app-context-ml></app-context-ml> </mat-tab>
+  <mat-tab label="ADAPTML"> ADAPTML </mat-tab>
+</mat-tab-group>
