@@ -1,5 +1,8 @@
-import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
 
+// mxGraph is loaded as a global script (see angular.json -> scripts). These
+// declarations expose the parts of the library we use to the TypeScript
+// compiler. The library itself is untyped here, hence `any`.
 declare var mxGraph: any;
 declare var mxPoint: any;
 declare var mxUtils: any;
@@ -10,229 +13,633 @@ declare var mxCellRenderer: any;
 declare var mxClient: any;
 declare var mxGraphModel: any;
 declare var mxEvent: any;
-declare var mxConnectionHandler:any;
+declare var mxConnectionHandler: any;
 declare var mxImage: any;
-declare var mxToolbar: any;
-declare var mxDivResizer: any;
 declare var mxKeyHandler: any;
 declare var mxCell: any;
 declare var mxGeometry: any;
-declare var mxHierarchicalLayout: any;
+declare var mxPerimeter: any;
+declare var mxEdgeStyle: any;
+
+/**
+ * Describes a draggable/clickable element in the IFML palette and links it to
+ * the mxGraph cell style and the IFML metaclass it represents on export.
+ */
+export interface IfmlPaletteItem {
+  /** Internal identifier of the palette entry. */
+  type: 'viewContainer' | 'viewComponent' | 'event' | 'annotation';
+  /** Label shown on the palette button. */
+  label: string;
+  /** Material icon used on the palette button. */
+  icon: string;
+  /** Default label given to a freshly created cell. */
+  defaultLabel: string;
+  /** Default width of a freshly created cell. */
+  width: number;
+  /** Default height of a freshly created cell. */
+  height: number;
+  /** Name of the registered mxGraph cell style. */
+  style: string;
+}
 
 @Component({
   selector: 'app-tiny-ifml',
   templateUrl: './tiny-ifml.component.html',
   styleUrls: ['./tiny-ifml.component.sass']
 })
-export class TinyIfmlComponent implements OnInit {
+export class TinyIfmlComponent implements OnInit, AfterViewInit {
 
-  @ViewChild("graphContainer")
+  @ViewChild('graphContainer')
   containerElementRef!: ElementRef;
 
-  @ViewChild("graphContainer")
-  toolbarElementRef!: ElementRef
+  @ViewChildren('paletteButton', { read: ElementRef })
+  paletteButtons!: QueryList<ElementRef>;
+
+  /** The mxGraph instance, created in ngAfterViewInit. */
+  private graph: any;
+
+  /** Used to cascade the position of cells added through a button click. */
+  private clickInsertCount = 0;
+
+  /**
+   * The IFML elements offered by the palette. The order here also drives the
+   * order of the rendered buttons and their drag sources.
+   */
+  paletteItems: IfmlPaletteItem[] = [
+    { type: 'viewContainer', label: 'View Container', icon: 'web_asset', defaultLabel: 'View Container', width: 320, height: 220, style: 'viewContainerStyle' },
+    { type: 'viewComponent', label: 'View Component', icon: 'view_module', defaultLabel: 'View', width: 200, height: 110, style: 'viewComponentStyle' },
+    { type: 'event', label: 'Event', icon: 'radio_button_checked', defaultLabel: 'event', width: 34, height: 34, style: 'eventStyle' },
+    { type: 'annotation', label: 'Annotation', icon: 'sticky_note_2', defaultLabel: 'ADAPTUI-ANNOTATION-STYLE=EDIT', width: 220, height: 70, style: 'generatorAnnotation' },
+  ];
 
   constructor() { }
 
-  ngOnInit(): void {
-  }
+  ngOnInit(): void { }
 
   get container() {
     return this.containerElementRef.nativeElement;
   }
-  get toolbar() {
-    return this.toolbarElementRef.nativeElement;
-  }
-
-  addToolbarItem(graph:any, toolbar:any, prototype:any, image:any)
-  {
-    // Function that is executed when the image is dropped on
-    // the graph. The cell argument points to the cell under
-    // the mousepointer if there is one.
-    var funct = function(graph:any, evt:any, cell:any, x:any, y:any)
-    {
-      graph.stopEditing(false);
-
-      var vertex = graph.getModel().cloneCell(prototype);
-      vertex.geometry.x = x;
-      vertex.geometry.y = y;
-
-      graph.addCell(vertex);
-      graph.setSelectionCell(vertex);
-    }
-
-    // Creates the image which is used as the drag icon (preview)
-    var img = toolbar.addMode(null, image, function(evt:any, cell:any)
-    {
-      var pt = graph.getPointForEvent(evt);
-      funct(graph, evt, cell, pt.x, pt.y);
-    });
-
-    // Disables dragging if element is disabled. This is a workaround
-    // for wrong event order in IE. Following is a dummy listener that
-    // is invoked as the last listener in IE.
-    mxEvent.addListener(img, 'mousedown', function(evt:any)
-    {
-      // do nothing
-    });
-
-    // This listener is always called first before any other listener
-    // in all browsers.
-    mxEvent.addListener(img, 'mousedown', function(evt:any)
-    {
-      if (img.enabled == false)
-      {
-        mxEvent.consume(evt);
-      }
-    });
-
-    mxUtils.makeDraggable(img, graph, funct);
-
-    return img;
-  }
 
   ngAfterViewInit(): void {
-    var tinyIFML = this;
-    // Creates the graph inside the given container
-    if (!mxClient.isBrowserSupported())
-    {
-      // Displays an error message if the browser is
-      // not supported.
+    // The component is also instantiated by the unit test harness where the
+    // mxGraph global is not present. Guard against that so the component stays
+    // creatable without the library on the page.
+    if (typeof mxClient === 'undefined') {
+      return;
+    }
+
+    if (!mxClient.isBrowserSupported()) {
       mxUtils.error('Browser is not supported!', 200, false);
+      return;
     }
-    else
-    {
-      // Defines an icon for creating new connections in the connection handler.
-      // This will automatically disable the highlighting of the source vertex.
-      mxConnectionHandler.prototype.connectImage = new mxImage('images/connector.gif', 16, 16);
 
-      // Creates new toolbar without event processing
-      var toolbar = new mxToolbar(this.toolbar);
-      toolbar.enabled = false
+    const model = new mxGraphModel();
+    const graph = new mxGraph(this.container, model);
+    this.graph = graph;
 
-      // Workaround for Internet Explorer ignoring certain styles
-      if (mxClient.IS_QUIRKS)
-      {
-        document.body.style.overflow = 'hidden';
-        new mxDivResizer(this.toolbar);
-        new mxDivResizer(this.container);
-      }
+    this.configureGraph(graph);
+    this.registerShapes();
+    this.registerStyles(graph);
+    this.registerDragSources(graph);
+    this.seedExample(graph);
+  }
 
-      // Creates the model and the graph inside the container
-      // using the fastest rendering available on the browser
-      var model = new mxGraphModel();
-      var graph = new mxGraph(this.container, model);
+  // --------------------------------------------------------------------------
+  // Graph configuration
+  // --------------------------------------------------------------------------
 
-      // Enables new connections in the graph
-      graph.setConnectable(true);
-      graph.setMultigraph(false);
+  /** Applies the general interaction behaviour of the editor. */
+  private configureGraph(graph: any): void {
+    graph.setConnectable(true);          // arrows / navigation flows
+    graph.setMultigraph(false);
+    graph.setAllowDanglingEdges(false);  // every flow must connect two elements
+    graph.setDropEnabled(true);          // allow dropping elements into containers
+    graph.setPanning(true);
+    graph.setCellsResizable(true);
+    graph.setHtmlLabels(false);
+    graph.vertexLabelsMovable = false;
+    graph.constrainChildren = true;
+    graph.extendParents = true;
+    graph.extendParentsOnAdd = true;
 
-      // Stops editing on enter or escape keypress
-      var keyHandler = new mxKeyHandler(graph);
-      var rubberband = new mxRubberband(graph);
+    // Edges (navigation flows) are not themselves connectable.
+    graph.setConnectableEdges(false);
 
-      var addVertex = function(icon:any, w:any, h:any, style:any)
-      {
-        var vertex = new mxCell(null, new mxGeometry(0, 0, w, h), style);
-        vertex.setVertex(true);
+    // Selection / rubber-band selection and keyboard shortcuts.
+    // eslint-disable-next-line no-new
+    new mxRubberband(graph);
+    const keyHandler = new mxKeyHandler(graph);
+    keyHandler.bindKey(46, () => this.deleteSelected()); // Delete
+    keyHandler.bindKey(8, () => this.deleteSelected());  // Backspace
 
-        var img = tinyIFML.addToolbarItem(graph, toolbar, vertex, icon);
-        img.enabled = true;
-
-        graph.getSelectionModel().addListener(mxEvent.CHANGE, function()
-        {
-          var tmp = graph.isSelectionEmpty();
-          mxUtils.setOpacity(img, (tmp) ? 100 : 20);
-          img.enabled = tmp;
-        });
-      };
-
-      addVertex('assets/fill.png', 1000, 700, 'viewContainerStyle');
-      addVertex('assets/fill.png', 400, 400, 'viewComponentStyle');
-      addVertex('assets/fill.png', 300, 50, 'generatorAnnotation');
-    }
-    graph.vertexLabelsMovable = true;
-
-    // Gets the default parent for inserting new cells. This
-    // is normally the first child of the root (ie. layer 0).
-
-    // Gets the default parent for inserting new cells. This
-    // is normally the first child of the root (ie. layer 0).
-    var parent = graph.getDefaultParent();
-
-    function BoxShape(this: any)
-    {
-       mxCylinder.call(this);
+    // New connections are created as navigation flows.
+    const self = this;
+    const baseCreateEdge = graph.createEdge.bind(graph);
+    graph.createEdge = function (parent: any, id: any, value: any, source: any, target: any, style: any) {
+      return baseCreateEdge(parent, id, value != null ? value : '', source, target, style || 'navigationFlowStyle');
     };
+
+    // Only let users start a flow from a view element or an event, and never
+    // from / to an annotation. Keeps the produced IFML model meaningful.
+    graph.isValidSource = function (cell: any) {
+      return cell != null && !self.isAnnotation(cell) && mxGraph.prototype.isValidSource.apply(this, [cell]);
+    };
+    graph.isValidTarget = function (cell: any) {
+      return cell != null && !self.isAnnotation(cell);
+    };
+  }
+
+  /** Registers the custom "box" shape used for view containers (title bar). */
+  private registerShapes(): void {
+    if (mxCellRenderer.defaultShapes && mxCellRenderer.defaultShapes['box']) {
+      return; // already registered (e.g. when the view is re-created)
+    }
+
+    function BoxShape(this: any) {
+      mxCylinder.call(this);
+    }
     mxUtils.extend(BoxShape, mxCylinder);
     BoxShape.prototype.extrude = 10;
-    BoxShape.prototype.redrawPath = function(path: { moveTo: (arg0: number, arg1: number) => void; lineTo: (arg0: number, arg1: number) => void; close: () => void; }, x: any, y: any, w: any, h: number, isForeground: any)
-    {
-       var dy = this.extrude * this.scale;
-       var dx = this.extrude * this.scale;
-       path.moveTo(0, 0);
-       path.lineTo(w, 0);
-       path.lineTo(w, 0.1*h);
-       path.lineTo(0, 0.1*h);
-       path.moveTo(w, 0);
-       path.lineTo(w, h);
-       path.lineTo(0, h);
-       path.lineTo(0, 0);
-       path.close()
-       //path.moveTo(0, dy);
-       //path.lineTo(w - dx, dy);
+    BoxShape.prototype.redrawPath = function (path: any, x: any, y: any, w: number, h: number) {
+      path.moveTo(0, 0);
+      path.lineTo(w, 0);
+      path.lineTo(w, 0.12 * h);
+      path.lineTo(0, 0.12 * h);
+      path.moveTo(w, 0);
+      path.lineTo(w, h);
+      path.lineTo(0, h);
+      path.lineTo(0, 0);
+      path.close();
     };
     mxCellRenderer.registerShape('box', BoxShape);
+  }
 
-    var viewContainerStyle = new Object() as any;
+  /** Registers the named cell styles for every IFML element type. */
+  private registerStyles(graph: any): void {
+    const stylesheet = graph.getStylesheet();
+
+    const viewContainerStyle: any = {};
     viewContainerStyle[mxConstants.STYLE_SHAPE] = 'box';
-    viewContainerStyle[mxConstants.STYLE_STROKECOLOR] = '#000000';
-    viewContainerStyle[mxConstants.STYLE_FONTCOLOR] = '#000000';
-    viewContainerStyle[mxConstants.STYLE_SPACING_TOP] = BoxShape.prototype.extrude;
-    viewContainerStyle[mxConstants.STYLE_SPACING_RIGHT] = BoxShape.prototype.extrude;
+    viewContainerStyle[mxConstants.STYLE_STROKECOLOR] = '#2c3e50';
+    viewContainerStyle[mxConstants.STYLE_FILLCOLOR] = '#ffffff';
+    viewContainerStyle[mxConstants.STYLE_FONTCOLOR] = '#2c3e50';
+    viewContainerStyle[mxConstants.STYLE_FONTSIZE] = 14;
+    viewContainerStyle[mxConstants.STYLE_FONTSTYLE] = mxConstants.FONT_BOLD;
+    viewContainerStyle[mxConstants.STYLE_VERTICAL_ALIGN] = mxConstants.ALIGN_TOP;
+    viewContainerStyle[mxConstants.STYLE_ALIGN] = mxConstants.ALIGN_CENTER;
+    viewContainerStyle[mxConstants.STYLE_SPACING_TOP] = 2;
+    viewContainerStyle[mxConstants.STYLE_STROKEWIDTH] = 1.5;
 
-    viewContainerStyle[mxConstants.STYLE_FONTSIZE] = 20;
-    viewContainerStyle[mxConstants.STYLE_FILLCOLOR] = '#FFFFFF';
+    const viewComponentStyle: any = {};
+    viewComponentStyle[mxConstants.STYLE_SHAPE] = mxConstants.SHAPE_RECTANGLE;
+    viewComponentStyle[mxConstants.STYLE_ROUNDED] = true;
+    viewComponentStyle[mxConstants.STYLE_STROKECOLOR] = '#34495e';
+    viewComponentStyle[mxConstants.STYLE_FILLCOLOR] = '#eef6fc';
+    viewComponentStyle[mxConstants.STYLE_FONTCOLOR] = '#2c3e50';
+    viewComponentStyle[mxConstants.STYLE_FONTSIZE] = 13;
+    viewComponentStyle[mxConstants.STYLE_VERTICAL_ALIGN] = mxConstants.ALIGN_TOP;
+    viewComponentStyle[mxConstants.STYLE_SPACING_TOP] = 4;
 
-    var viewComponentStyle = new Object() as any;
-    viewComponentStyle[mxConstants.STYLE_STROKECOLOR] = '#000000';
-    viewComponentStyle[mxConstants.STYLE_FONTCOLOR] = '#000000';
+    const eventStyle: any = {};
+    eventStyle[mxConstants.STYLE_SHAPE] = mxConstants.SHAPE_ELLIPSE;
+    eventStyle[mxConstants.STYLE_PERIMETER] = mxPerimeter.EllipsePerimeter;
+    eventStyle[mxConstants.STYLE_STROKECOLOR] = '#e67e22';
+    eventStyle[mxConstants.STYLE_FILLCOLOR] = '#ffffff';
+    eventStyle[mxConstants.STYLE_STROKEWIDTH] = 2;
+    eventStyle[mxConstants.STYLE_FONTCOLOR] = '#a85b10';
+    eventStyle[mxConstants.STYLE_FONTSIZE] = 11;
+    eventStyle[mxConstants.STYLE_VERTICAL_LABEL_POSITION] = mxConstants.ALIGN_BOTTOM;
+    eventStyle[mxConstants.STYLE_VERTICAL_ALIGN] = mxConstants.ALIGN_TOP;
 
-    viewComponentStyle[mxConstants.STYLE_FONTSIZE] = 20;
-    viewComponentStyle[mxConstants.STYLE_FILLCOLOR] = '#FFFFFF';
+    const generatorAnnotation: any = {};
+    generatorAnnotation[mxConstants.STYLE_STROKECOLOR] = '#e0c000';
+    generatorAnnotation[mxConstants.STYLE_FILLCOLOR] = '#fff7c0';
+    generatorAnnotation[mxConstants.STYLE_FONTCOLOR] = '#6b5900';
+    generatorAnnotation[mxConstants.STYLE_FONTSIZE] = 11;
+    generatorAnnotation[mxConstants.STYLE_ALIGN] = mxConstants.ALIGN_LEFT;
+    generatorAnnotation[mxConstants.STYLE_VERTICAL_ALIGN] = mxConstants.ALIGN_TOP;
+    generatorAnnotation[mxConstants.STYLE_SPACING_LEFT] = 6;
+    generatorAnnotation[mxConstants.STYLE_SPACING_TOP] = 4;
+    generatorAnnotation[mxConstants.STYLE_WHITE_SPACE] = 'wrap';
 
-    var generatorAnnotation = new Object() as any;
-    generatorAnnotation[mxConstants.STYLE_STROKECOLOR] = '#000000';
-    generatorAnnotation[mxConstants.STYLE_FONTCOLOR] = '#000000';
+    const navigationFlowStyle: any = {};
+    navigationFlowStyle[mxConstants.STYLE_EDGE] = mxEdgeStyle.OrthConnector;
+    navigationFlowStyle[mxConstants.STYLE_ROUNDED] = true;
+    navigationFlowStyle[mxConstants.STYLE_ENDARROW] = mxConstants.ARROW_CLASSIC;
+    navigationFlowStyle[mxConstants.STYLE_STROKECOLOR] = '#555555';
+    navigationFlowStyle[mxConstants.STYLE_STROKEWIDTH] = 2;
+    navigationFlowStyle[mxConstants.STYLE_FONTCOLOR] = '#333333';
+    navigationFlowStyle[mxConstants.STYLE_FONTSIZE] = 11;
+    navigationFlowStyle[mxConstants.STYLE_LABEL_BACKGROUNDCOLOR] = '#ffffff';
 
-    generatorAnnotation[mxConstants.STYLE_FONTSIZE] = 12;
-    generatorAnnotation[mxConstants.STYLE_FILLCOLOR] = '#ffffaa';
+    stylesheet.putCellStyle('viewContainerStyle', viewContainerStyle);
+    stylesheet.putCellStyle('viewComponentStyle', viewComponentStyle);
+    stylesheet.putCellStyle('eventStyle', eventStyle);
+    stylesheet.putCellStyle('generatorAnnotation', generatorAnnotation);
+    stylesheet.putCellStyle('navigationFlowStyle', navigationFlowStyle);
 
-    graph.getStylesheet().putCellStyle('viewContainerStyle', viewContainerStyle);
-    graph.getStylesheet().putCellStyle('viewComponentStyle', viewComponentStyle);
-    graph.getStylesheet().putCellStyle('generatorAnnotation', generatorAnnotation);
+    // Make freshly drawn connections look like navigation flows by default.
+    const defaultEdge = stylesheet.getDefaultEdgeStyle();
+    for (const key of Object.keys(navigationFlowStyle)) {
+      defaultEdge[key] = navigationFlowStyle[key];
+    }
+  }
 
-    // Checks if browser is supported
+  /** Wires every palette button up as a drag source for the graph. */
+  private registerDragSources(graph: any): void {
+    const buttons = this.paletteButtons.toArray();
+    buttons.forEach((btnRef, index) => {
+      const item = this.paletteItems[index];
+      if (!item) {
+        return;
+      }
+      const onDrop = (g: any, evt: any, dropCell: any, x: number, y: number) => {
+        this.insertElement(item, x, y, dropCell, true);
+      };
+      mxUtils.makeDraggable(btnRef.nativeElement, graph, onDrop);
+    });
+  }
 
-    // Adds cells to the model in a single step
+  // --------------------------------------------------------------------------
+  // Palette / toolbar actions (bound from the template)
+  // --------------------------------------------------------------------------
+
+  /** Adds an element by clicking its palette button (no drag required). */
+  addElement(item: IfmlPaletteItem): void {
+    if (!this.graph) {
+      return;
+    }
+    const offset = (this.clickInsertCount++ % 6) * 24;
+    this.insertElement(item, 40 + offset, 40 + offset, null, false);
+  }
+
+  exportIfml(): void {
+    if (!this.graph) {
+      return;
+    }
+    const xml = this.buildIfmlXml();
+    this.downloadFile(xml, 'model.ifml', 'application/xml');
+  }
+
+  zoomIn(): void { this.graph?.zoomIn(); }
+
+  zoomOut(): void { this.graph?.zoomOut(); }
+
+  resetView(): void {
+    if (!this.graph) {
+      return;
+    }
+    this.graph.zoomActual();
+    this.graph.view.setTranslate(0, 0);
+  }
+
+  fit(): void { this.graph?.fit(); }
+
+  deleteSelected(): void {
+    if (!this.graph || this.graph.isSelectionEmpty()) {
+      return;
+    }
+    this.graph.removeCells();
+  }
+
+  clearAll(): void {
+    if (!this.graph) {
+      return;
+    }
+    if (!confirm('Remove every element from the diagram?')) {
+      return;
+    }
+    const graph = this.graph;
+    const parent = graph.getDefaultParent();
     graph.getModel().beginUpdate();
-    try
-    {
-       var v1 = graph.insertVertex(parent, null,
-                'View Container', 200, 150, 1000, 700, 'viewContainerStyle');
-       v1.geometry.offset = new mxPoint(0, -700/2+50);
-
-       var v2 = graph.insertVertex(v1, null,
-                'View', 200, 150, 400, 400, 'viewComponentStyle');
-
-       var v3 = graph.insertVertex(v2, null,
-                'ADAPTUI-ANOTATION-STYLE=EDIT\nADAPTUI-ANOTATION-SCROLL=ON', 100, 0, 300, 50, 'generatorAnnotation');
+    try {
+      graph.removeCells(graph.getChildCells(parent, true, true));
+    } finally {
+      graph.getModel().endUpdate();
     }
-    finally
-    {
-       // Updates the display
-       graph.getModel().endUpdate();
-    }
- }
+  }
 
+  // --------------------------------------------------------------------------
+  // Cell creation helpers
+  // --------------------------------------------------------------------------
+
+  /**
+   * Inserts a new IFML element. View components, events and annotations are
+   * nested into the view container under the drop point (or the selected one)
+   * so the produced model keeps a sensible containment hierarchy.
+   *
+   * @param absolute when true, (x, y) are absolute graph coordinates (a drop)
+   *   and are converted into the parent's local coordinate system; when false
+   *   they are already parent-local offsets (a click-to-add).
+   */
+  private insertElement(item: IfmlPaletteItem, x: number, y: number, dropCell: any, absolute: boolean): void {
+    const graph = this.graph;
+    const model = graph.getModel();
+    const parent = this.resolveParent(item, dropCell);
+    const nested = parent !== graph.getDefaultParent();
+
+    model.beginUpdate();
+    try {
+      let px = x;
+      let py = y;
+      // Convert an absolute drop point into the parent's local coordinates.
+      if (absolute && nested) {
+        const state = graph.view.getState(parent);
+        if (state) {
+          const scale = graph.view.scale;
+          const tr = graph.view.translate;
+          px = x - (state.x / scale - tr.x);
+          py = y - (state.y / scale - tr.y);
+        }
+      }
+      if (nested) {
+        // Keep the element inside the container (below its title bar).
+        px = Math.max(8, px);
+        py = Math.max(24, py);
+      }
+      const vertex = graph.insertVertex(parent, null, item.defaultLabel, px, py, item.width, item.height, item.style);
+      graph.setSelectionCell(vertex);
+    } finally {
+      model.endUpdate();
+    }
+  }
+
+  /** Picks the parent cell for a new element based on the drop/selection target. */
+  private resolveParent(item: IfmlPaletteItem, dropCell: any): any {
+    const graph = this.graph;
+    // Top-level containers always live on the root layer.
+    if (item.type === 'viewContainer') {
+      let candidate = dropCell;
+      while (candidate != null && !this.isViewContainer(candidate)) {
+        candidate = this.graph.getModel().getParent(candidate);
+      }
+      return candidate || graph.getDefaultParent();
+    }
+
+    let target = dropCell;
+    if (!target) {
+      const selected = graph.getSelectionCell();
+      target = selected || null;
+    }
+    while (target != null && !this.isViewContainer(target)) {
+      target = graph.getModel().getParent(target);
+    }
+    return target || graph.getDefaultParent();
+  }
+
+  // --------------------------------------------------------------------------
+  // Cell type predicates
+  // --------------------------------------------------------------------------
+
+  private styleOf(cell: any): string {
+    return (cell && typeof cell.style === 'string') ? cell.style : '';
+  }
+
+  private isViewContainer(cell: any): boolean {
+    return this.styleOf(cell).indexOf('viewContainerStyle') >= 0;
+  }
+
+  private isViewComponent(cell: any): boolean {
+    return this.styleOf(cell).indexOf('viewComponentStyle') >= 0;
+  }
+
+  private isEvent(cell: any): boolean {
+    return this.styleOf(cell).indexOf('eventStyle') >= 0;
+  }
+
+  private isAnnotation(cell: any): boolean {
+    return this.styleOf(cell).indexOf('generatorAnnotation') >= 0;
+  }
+
+  // --------------------------------------------------------------------------
+  // IFML XML export
+  // --------------------------------------------------------------------------
+
+  /**
+   * Serialises the current graph into a simplified IFML (XMI) document with
+   * ViewContainers, ViewComponents, Events, NavigationFlows and Comments.
+   */
+  private buildIfmlXml(): string {
+    const model = this.graph.getModel();
+    const root = this.graph.getDefaultParent();
+
+    // Assign a stable XMI id to every relevant cell.
+    const idMap = new Map<any, string>();
+    let counter = 0;
+    const nextId = () => `id_${++counter}`;
+    const allCells: any[] = model.getDescendants ? model.getDescendants(root) : this.collectDescendants(root);
+    for (const cell of allCells) {
+      if (this.isViewContainer(cell) || this.isViewComponent(cell) || this.isEvent(cell) || this.isAnnotation(cell)) {
+        idMap.set(cell, nextId());
+      }
+    }
+
+    // Events that must be synthesised on a source element because the user drew
+    // a flow directly from a container/component instead of from an event.
+    const synthesizedEvents = new Map<any, { id: string; name: string; metaclass: string }[]>();
+    const navigationFlows: { id: string; name: string; source: string; target: string }[] = [];
+
+    const edges: any[] = allCells.filter((c) => model.isEdge(c));
+    for (const edge of edges) {
+      const source = model.getTerminal(edge, true);
+      const target = model.getTerminal(edge, false);
+      if (!source || !target || this.isAnnotation(source) || this.isAnnotation(target)) {
+        continue;
+      }
+      const targetId = idMap.get(target);
+      if (!targetId) {
+        continue;
+      }
+
+      let sourceEventId: string | undefined;
+      if (this.isEvent(source)) {
+        sourceEventId = idMap.get(source);
+      } else {
+        // Synthesize a ViewElementEvent on the source view element.
+        sourceEventId = nextId();
+        const metaclass = this.isViewContainer(source) ? 'ViewContainerEvent' : 'ViewComponentEvent';
+        const name = this.cleanName(edge.value) || ('on' + this.pascalCase(this.cleanName(target.value) || 'Navigate'));
+        const list = synthesizedEvents.get(source) || [];
+        list.push({ id: sourceEventId, name, metaclass });
+        synthesizedEvents.set(source, list);
+      }
+      if (!sourceEventId) {
+        continue;
+      }
+      navigationFlows.push({
+        id: nextId(),
+        name: this.cleanName(edge.value),
+        source: sourceEventId,
+        target: targetId,
+      });
+    }
+
+    // Recursively serialise the view-element containment hierarchy.
+    const serializeElement = (cell: any, containmentRef: string, indent: string): string => {
+      const id = idMap.get(cell);
+      const name = this.escapeXml(this.cleanName(cell.value) || (this.isViewContainer(cell) ? 'ViewContainer' : 'ViewComponent'));
+      const metaclass = this.isViewContainer(cell) ? 'ViewContainer' : 'ViewComponent';
+      const childCells: any[] = model.getChildCells(cell, true, false) || [];
+
+      const inner: string[] = [];
+
+      // Explicit event circles placed on this element.
+      for (const child of childCells) {
+        if (this.isEvent(child)) {
+          const evMeta = this.isViewContainer(cell) ? 'ViewContainerEvent' : 'ViewComponentEvent';
+          inner.push(`${indent}  <viewElementEvents xsi:type="ifml:${evMeta}" xmi:id="${idMap.get(child)}" name="${this.escapeXml(this.cleanName(child.value) || 'event')}"/>`);
+        }
+      }
+      // Events synthesised from flows that start at this element.
+      for (const ev of synthesizedEvents.get(cell) || []) {
+        inner.push(`${indent}  <viewElementEvents xsi:type="ifml:${ev.metaclass}" xmi:id="${ev.id}" name="${this.escapeXml(ev.name)}"/>`);
+      }
+      // Nested view containers / components.
+      for (const child of childCells) {
+        if (this.isViewContainer(child) || this.isViewComponent(child)) {
+          inner.push(serializeElement(child, 'viewElements', indent + '  '));
+        }
+      }
+
+      const attrs = metaclass === 'ViewContainer' ? ' isLandmark="false" isDefault="false" isXOR="false"' : '';
+      if (inner.length === 0) {
+        return `${indent}<${containmentRef} xsi:type="ifml:${metaclass}" xmi:id="${id}" name="${name}"${attrs}/>`;
+      }
+      return `${indent}<${containmentRef} xsi:type="ifml:${metaclass}" xmi:id="${id}" name="${name}"${attrs}>\n${inner.join('\n')}\n${indent}</${containmentRef}>`;
+    };
+
+    const topLevel: any[] = (model.getChildCells(root, true, false) || []);
+    const elementXml: string[] = [];
+    for (const cell of topLevel) {
+      if (this.isViewContainer(cell) || this.isViewComponent(cell)) {
+        elementXml.push(serializeElement(cell, 'interactionFlowElements', '    '));
+      }
+    }
+
+    const flowXml = navigationFlows.map((f) =>
+      `    <interactionFlowConnections xsi:type="ifml:NavigationFlow" xmi:id="${f.id}" name="${this.escapeXml(f.name)}" sourceInteractionFlowElement="${f.source}" targetInteractionFlowElement="${f.target}"/>`
+    );
+
+    // Annotations become UML-style comments referencing the element they sit on.
+    const commentXml: string[] = [];
+    for (const cell of allCells) {
+      if (this.isAnnotation(cell)) {
+        const annotated = this.nearestAnnotatedId(cell, idMap);
+        const ref = annotated ? ` annotatedElements="${annotated}"` : '';
+        commentXml.push(`  <comments xmi:id="${idMap.get(cell)}" body="${this.escapeXml(this.cleanName(cell.value))}"${ref}/>`);
+      }
+    }
+
+    const modelChildren = [...elementXml, ...flowXml].join('\n');
+    const lines: string[] = [];
+    lines.push('<?xml version="1.0" encoding="UTF-8"?>');
+    lines.push('<ifml:IFMLModel xmi:version="2.0"');
+    lines.push('    xmlns:xmi="http://www.omg.org/XMI"');
+    lines.push('    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"');
+    lines.push('    xmlns:ifml="http://www.omg.org/spec/IFML/20140301"');
+    lines.push('    name="AdaptUI IFML Model">');
+    lines.push('  <interactionFlowModel xmi:id="ifml_model" name="AdaptUI IFML Model">');
+    if (modelChildren) {
+      lines.push(modelChildren);
+    }
+    lines.push('  </interactionFlowModel>');
+    if (commentXml.length) {
+      lines.push(commentXml.join('\n'));
+    }
+    lines.push('</ifml:IFMLModel>');
+    return lines.join('\n');
+  }
+
+  /** Finds the id of the closest view element a comment is attached to. */
+  private nearestAnnotatedId(cell: any, idMap: Map<any, string>): string | undefined {
+    const model = this.graph.getModel();
+    let parent = model.getParent(cell);
+    while (parent != null) {
+      if (idMap.has(parent)) {
+        return idMap.get(parent);
+      }
+      parent = model.getParent(parent);
+    }
+    return undefined;
+  }
+
+  private collectDescendants(parent: any): any[] {
+    const model = this.graph.getModel();
+    const result: any[] = [];
+    const visit = (cell: any) => {
+      const count = model.getChildCount(cell);
+      for (let i = 0; i < count; i++) {
+        const child = model.getChildAt(cell, i);
+        result.push(child);
+        visit(child);
+      }
+    };
+    visit(parent);
+    return result;
+  }
+
+  // --------------------------------------------------------------------------
+  // Small utilities
+  // --------------------------------------------------------------------------
+
+  private cleanName(value: any): string {
+    if (value == null) {
+      return '';
+    }
+    return String(value).replace(/\s+/g, ' ').trim();
+  }
+
+  private pascalCase(value: string): string {
+    return value
+      .replace(/[^a-zA-Z0-9 ]/g, ' ')
+      .split(' ')
+      .filter((w) => w.length > 0)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join('');
+  }
+
+  private escapeXml(value: string): string {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  private downloadFile(content: string, filename: string, mime: string): void {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }
+
+  // --------------------------------------------------------------------------
+  // Seed diagram
+  // --------------------------------------------------------------------------
+
+  /** Inserts a small starter model so the editor is not empty on first load. */
+  private seedExample(graph: any): void {
+    const parent = graph.getDefaultParent();
+    const model = graph.getModel();
+    model.beginUpdate();
+    try {
+      const home = graph.insertVertex(parent, null, 'Home', 60, 60, 320, 220, 'viewContainerStyle');
+      const list = graph.insertVertex(home, null, 'Product List', 40, 50, 200, 110, 'viewComponentStyle');
+      graph.insertVertex(list, null, 'ADAPTUI-ANNOTATION-STYLE=EDIT\nADAPTUI-ANNOTATION-SCROLL=ON', 10, 70, 180, 32, 'generatorAnnotation');
+      const select = graph.insertVertex(list, null, 'onSelect', 184, 44, 30, 30, 'eventStyle');
+
+      const details = graph.insertVertex(parent, null, 'Product Details', 470, 90, 280, 170, 'viewContainerStyle');
+      graph.insertVertex(details, null, 'Details', 40, 50, 200, 90, 'viewComponentStyle');
+
+      graph.insertEdge(parent, null, 'view details', select, details, 'navigationFlowStyle');
+    } finally {
+      model.endUpdate();
+    }
+  }
 }

@@ -1,4 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { TinyIfmlComponent } from './tiny-ifml.component';
 
@@ -8,7 +12,8 @@ describe('TinyIfmlComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      declarations: [ TinyIfmlComponent ]
+      imports: [NoopAnimationsModule, MatButtonModule, MatIconModule, MatTooltipModule],
+      declarations: [TinyIfmlComponent]
     })
     .compileComponents();
   });
@@ -21,5 +26,12 @@ describe('TinyIfmlComponent', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('exposes the IFML palette items', () => {
+    expect(component.paletteItems.length).toBeGreaterThan(0);
+    const types = component.paletteItems.map((i) => i.type);
+    expect(types).toContain('viewContainer');
+    expect(types).toContain('viewComponent');
   });
 });

@@ -10,6 +10,8 @@ import {MatIconModule} from '@angular/material/icon';
 import { TinyIfmlComponent } from './tiny-ifml/tiny-ifml.component';
 import { ContextMlComponent } from './context-ml/context-ml.component';
 import {MatCheckboxModule} from '@angular/material/checkbox';
+import {MatButtonModule} from '@angular/material/button';
+import {MatTooltipModule} from '@angular/material/tooltip';
 
 @NgModule({
   declarations: [
@@ -25,6 +27,8 @@ import {MatCheckboxModule} from '@angular/material/checkbox';
     MatToolbarModule,
     MatIconModule,
     MatCheckboxModule,
+    MatButtonModule,
+    MatTooltipModule,
   ],
   providers: [],
   bootstrap: [AppComponent]

@@ -1,14 +1,48 @@
-<!--<script type="text/javascript">
-  mxBasePath = 'node_modules/mxgraph/javascript/src';
-</script>-->
+<div class="ifml-editor">
 
-<!-- Loads and initializes the library -->
-<!--<script type="text/javascript" src="node_modules/mxgraph/javascript/mxClient.min.js"></script>-->
+  <!-- Palette: the "nicer" creation buttons for IFML elements -->
+  <aside class="ifml-palette">
+    <h3 class="palette-title">IFML Elements</h3>
 
-<!-- Example code -->
-<!-- Page passes the container for the graph to the program -->
+    <button
+      *ngFor="let item of paletteItems"
+      #paletteButton
+      type="button"
+      class="palette-item"
+      [ngClass]="'palette-' + item.type"
+      (click)="addElement(item)"
+      [matTooltip]="'Click to add, or drag onto the canvas'"
+      matTooltipPosition="right">
+      <span class="palette-icon"><mat-icon>{{ item.icon }}</mat-icon></span>
+      <span class="palette-label">{{ item.label }}</span>
+    </button>
 
-<!-- Creates a container for the graph with a grid wallpaper -->
-<div id="demoGraph">
-  <div #graphContainer></div>
+    <div class="palette-hint">
+      <mat-icon class="hint-icon">trending_flat</mat-icon>
+      <span>
+        <b>Navigation Flow:</b> hover over the border of an element until the
+        crosshair appears, then drag an arrow onto a target element.
+      </span>
+    </div>
+  </aside>
+
+  <!-- Canvas with its action toolbar -->
+  <section class="ifml-canvas-wrap">
+    <div class="ifml-actions">
+      <button mat-raised-button color="primary" (click)="exportIfml()" matTooltip="Download the model as IFML XML">
+        <mat-icon>download</mat-icon>
+        Export IFML XML
+      </button>
+      <span class="actions-spacer"></span>
+      <button mat-icon-button (click)="zoomIn()" matTooltip="Zoom in"><mat-icon>zoom_in</mat-icon></button>
+      <button mat-icon-button (click)="zoomOut()" matTooltip="Zoom out"><mat-icon>zoom_out</mat-icon></button>
+      <button mat-icon-button (click)="fit()" matTooltip="Fit to screen"><mat-icon>fit_screen</mat-icon></button>
+      <button mat-icon-button (click)="resetView()" matTooltip="Reset zoom"><mat-icon>youtube_searched_for</mat-icon></button>
+      <button mat-icon-button (click)="deleteSelected()" matTooltip="Delete selection"><mat-icon>delete_outline</mat-icon></button>
+      <button mat-icon-button (click)="clearAll()" matTooltip="Clear diagram"><mat-icon>layers_clear</mat-icon></button>
+    </div>
+
+    <div #graphContainer class="ifml-graph"></div>
+  </section>
+
 </div>

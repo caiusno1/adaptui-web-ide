@@ -1,10 +1,18 @@
 # AdaptuiFrontend
 
+The Angular application for the **AdaptUI 3.0 Web IDE**. For an overview of the
+project, its architecture and the IFML editor, see the
+[top-level README](../README.md).
+
 This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 12.2.7.
 
 ## Development server
 
 Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The app will automatically reload if you change any of the source files.
+
+> **Node 17+:** if the build fails with `ERR_OSSL_EVP_UNSUPPORTED`, start the
+> tooling with `NODE_OPTIONS=--openssl-legacy-provider` (e.g.
+> `NODE_OPTIONS=--openssl-legacy-provider ng serve`).
 
 ## Code scaffolding
 
