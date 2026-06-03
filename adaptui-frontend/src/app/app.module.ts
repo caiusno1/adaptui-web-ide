@@ -11,6 +11,8 @@ import {MatIconModule} from '@angular/material/icon';
 import { TinyIfmlComponent } from './tiny-ifml/tiny-ifml.component';
 import { ContextMlComponent } from './context-ml/context-ml.component';
 import { AdaptMlComponent } from './adapt-ml/adapt-ml.component';
+import { StyleMlComponent } from './style-ml/style-ml.component';
+import { OperationMlComponent } from './operation-ml/operation-ml.component';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {MatButtonModule} from '@angular/material/button';
 import {MatTooltipModule} from '@angular/material/tooltip';
@@ -20,7 +22,9 @@ import {MatTooltipModule} from '@angular/material/tooltip';
     AppComponent,
     TinyIfmlComponent,
     ContextMlComponent,
-    AdaptMlComponent
+    AdaptMlComponent,
+    StyleMlComponent,
+    OperationMlComponent
   ],
   imports: [
     BrowserModule,

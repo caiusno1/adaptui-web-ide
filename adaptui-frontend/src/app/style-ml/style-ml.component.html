@@ -1,0 +1,64 @@
+<div class="style-editor">
+
+  <aside class="style-side">
+    <h3 class="side-title">Style</h3>
+
+    <button
+      #paletteButton
+      type="button"
+      class="palette-item palette-style"
+      (click)="addRule()"
+      matTooltip="Click to add, or drag onto the canvas"
+      matTooltipPosition="right">
+      <span class="palette-icon"><mat-icon>palette</mat-icon></span>
+      <span class="palette-label">Style Rule</span>
+    </button>
+
+    <div class="palette-hint">
+      <mat-icon class="hint-icon">format_paint</mat-icon>
+      <span>A style rule concretizes IFML elements selected by <b>id</b> or <b>class</b> with concrete properties (currently background colour).</span>
+    </div>
+
+    <div class="config-panel" *ngIf="selectedRule as r">
+      <h4>Style Rule</h4>
+      <label class="field">
+        <span>Selector</span>
+        <select [(ngModel)]="r.selectorKind" (ngModelChange)="onSelectorKindChange()">
+          <option value="class">By class</option>
+          <option value="id">By element id</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>{{ r.selectorKind === 'id' ? 'Element' : 'Class' }}</span>
+        <select [(ngModel)]="r.selector" (ngModelChange)="onRuleChange()">
+          <option value="" disabled>— choose —</option>
+          <option *ngFor="let o of selectorOptions" [value]="o">{{ o }}</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Background colour</span>
+        <span class="color-row">
+          <input type="color" [(ngModel)]="r.backgroundColor" (ngModelChange)="onRuleChange()">
+          <input type="text" class="color-text" [(ngModel)]="r.backgroundColor" (ngModelChange)="onRuleChange()">
+        </span>
+      </label>
+    </div>
+  </aside>
+
+  <section class="style-canvas-wrap">
+    <div class="style-actions">
+      <button mat-raised-button color="primary" (click)="exportStyle()" matTooltip="Download the style model as XML">
+        <mat-icon>download</mat-icon>
+        Export Style XML
+      </button>
+      <span class="actions-spacer"></span>
+      <button mat-icon-button (click)="zoomIn()" matTooltip="Zoom in"><mat-icon>zoom_in</mat-icon></button>
+      <button mat-icon-button (click)="zoomOut()" matTooltip="Zoom out"><mat-icon>zoom_out</mat-icon></button>
+      <button mat-icon-button (click)="fit()" matTooltip="Fit to screen"><mat-icon>fit_screen</mat-icon></button>
+      <button mat-icon-button (click)="deleteSelected()" matTooltip="Delete selection"><mat-icon>delete_outline</mat-icon></button>
+      <button mat-icon-button (click)="clearAll()" matTooltip="Clear model"><mat-icon>layers_clear</mat-icon></button>
+    </div>
+    <div #graphContainer class="style-graph"></div>
+  </section>
+
+</div>

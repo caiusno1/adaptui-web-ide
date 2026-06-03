@@ -98,17 +98,9 @@ export interface ConditionConfig {
   value: string;
 }
 
-/** An operation that changes a property of the targeted IFML element(s). */
+/** An operation reference: the name of an operation defined in the Operations tab. */
 export interface OperationConfig {
-  targetKind: TargetKind;
-  /** Element name (for `id`) or class name (for `class`); empty for `global`. */
-  targetValue: string;
-  /** Changeable property name, e.g. `visible`, `fontSize`. */
-  property: string;
-  /** `show` | `hide` for booleans; `increase` | `decrease` | `set` for numbers. */
-  action: string;
-  /** Step / value for numeric actions. */
-  amount: number;
+  operationName: string;
 }
 
 export type AdaptNodeKind = 'condition' | 'operation';

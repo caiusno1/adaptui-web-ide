@@ -57,41 +57,15 @@
 
       <!-- Operation -->
       <ng-container *ngIf="data.kind === 'operation' && data.operation as o">
-        <label class="field">
-          <span>Target</span>
-          <select [(ngModel)]="o.targetKind" (ngModelChange)="onOperationTargetKindChange()">
-            <option *ngFor="let t of targetKinds" [value]="t.value">{{ t.label }}</option>
-          </select>
-        </label>
-
-        <label class="field" *ngIf="o.targetKind !== 'global'">
-          <span>{{ o.targetKind === 'class' ? 'Class' : 'Element' }}</span>
-          <select [(ngModel)]="o.targetValue" (ngModelChange)="onOperationTargetChange()">
-            <option value="" disabled>— choose —</option>
-            <option *ngFor="let opt of targetValueOptions" [value]="opt.value">{{ opt.label }}</option>
-          </select>
-        </label>
-        <div class="empty-note" *ngIf="o.targetKind === 'id' && targetValueOptions.length === 0">
-          No IFML elements yet — add some in the <b>IFML</b> tab.
+        <div class="empty-note" *ngIf="operationNames.length === 0">
+          No operations defined yet — model some in the <b>OPERATIONS</b> tab.
         </div>
-
-        <label class="field">
-          <span>Property</span>
-          <select [(ngModel)]="o.property" (ngModelChange)="onOperationPropertyChange()">
-            <option *ngFor="let p of propertyOptions" [value]="p.name">{{ p.label }}</option>
+        <label class="field" *ngIf="operationNames.length > 0">
+          <span>Operation</span>
+          <select [(ngModel)]="o.operationName" (ngModelChange)="onConfigChange()">
+            <option value="" disabled>— choose —</option>
+            <option *ngFor="let name of operationNames" [value]="name">{{ name }}</option>
           </select>
-        </label>
-
-        <label class="field">
-          <span>Action</span>
-          <select [(ngModel)]="o.action" (ngModelChange)="onConfigChange()">
-            <option *ngFor="let a of actionOptions" [value]="a.value">{{ a.label }}</option>
-          </select>
-        </label>
-
-        <label class="field" *ngIf="showAmount">
-          <span>Amount</span>
-          <input type="number" [(ngModel)]="o.amount" (ngModelChange)="onConfigChange()">
         </label>
       </ng-container>
     </div>

@@ -3,12 +3,11 @@ import { NgZone } from '@angular/core';
 import { Subscription } from 'rxjs';
 
 import {
-  AdaptNodeData, AdaptationClass, ChangeableProperty, ConditionConfig, ContextProperty,
-  ENUM_OPERATORS, IfmlElementRef, NUMBER_OPERATORS, OPERATOR_XML, OperationConfig, TargetKind,
+  AdaptNodeData, ConditionConfig, ContextProperty, ENUM_OPERATORS, NUMBER_OPERATORS,
+  OPERATOR_XML, OperationConfig,
 } from '../model/adaptation.model';
-import { AdaptationClassService } from '../services/adaptation-class.service';
 import { ContextModelService } from '../services/context-model.service';
-import { IfmlModelService } from '../services/ifml-model.service';
+import { OperationModelService } from '../services/operation-model.service';
 
 // mxGraph is loaded as a global browser script (see angular.json -> scripts).
 declare var mxGraph: any;
@@ -33,9 +32,9 @@ interface AdaptPaletteItem {
 /**
  * Graphical editor for the ADAPTML adaptation model. The user places
  * **Condition** nodes (expressed over context properties activated in
- * CONTEXTML) and **Operation** nodes (which change a property of one or more
- * IFML elements), and connects conditions to operations. Each operation plus
- * its incoming conditions forms an adaptation rule, exportable as XML.
+ * CONTEXTML) and **Operation** nodes (which reference an operation defined in
+ * the Operations tab), and connects conditions to operations. Each operation
+ * plus its incoming conditions forms an adaptation rule, exportable as XML.
  */
 @Component({
   selector: 'app-adapt-ml',
@@ -64,8 +63,7 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Live, cross-tab data driving the configuration panel.
   activatedContext: ContextProperty[] = [];
-  ifmlElements: IfmlElementRef[] = [];
-  adaptationClasses: AdaptationClass[] = [];
+  operationNames: string[] = [];
 
   // Current selection for the configuration panel.
   selectedCellId: string | null = null;
@@ -74,22 +72,17 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   constructor(
     private zone: NgZone,
     private contextService: ContextModelService,
-    private ifmlService: IfmlModelService,
-    private classService: AdaptationClassService,
+    private operationService: OperationModelService,
   ) { }
 
   ngOnInit(): void {
-    this.adaptationClasses = this.classService.classes;
     this.subscriptions.add(
       this.contextService.properties$.subscribe((props) => {
         this.activatedContext = props.filter((p) => p.activated);
       })
     );
     this.subscriptions.add(
-      this.ifmlService.elements$.subscribe((els) => { this.ifmlElements = els; })
-    );
-    this.subscriptions.add(
-      this.classService.classes$.subscribe((cs) => { this.adaptationClasses = cs; })
+      this.operationService.names$.subscribe((names) => { this.operationNames = names; })
     );
   }
 
@@ -276,15 +269,12 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private defaultOperation(): OperationConfig {
-    return { targetKind: 'global', targetValue: '', property: 'visible', action: 'hide', amount: 1 };
+    return { operationName: this.operationNames[0] ?? '' };
   }
 
   // --------------------------------------------------------------------------
   // Configuration panel — option providers (bound from the template)
   // --------------------------------------------------------------------------
-
-  get isConditionSelected(): boolean { return this.selectedData?.kind === 'condition'; }
-  get isOperationSelected(): boolean { return this.selectedData?.kind === 'operation'; }
 
   operatorsForProp(prop: ContextProperty | undefined): string[] {
     return prop && prop.type === 'enum' ? ENUM_OPERATORS : NUMBER_OPERATORS;
@@ -309,68 +299,6 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     return (c && this.contextProp(c.propertyKey)?.values) || [];
   }
 
-  readonly targetKinds: { value: TargetKind; label: string }[] = [
-    { value: 'global', label: 'Global (all elements)' },
-    { value: 'class', label: 'By class' },
-    { value: 'id', label: 'By element id' },
-  ];
-
-  get targetValueOptions(): { value: string; label: string }[] {
-    const o = this.selectedData?.operation;
-    if (!o) {
-      return [];
-    }
-    if (o.targetKind === 'class') {
-      return this.adaptationClasses.map((c) => ({ value: c.name, label: c.label }));
-    }
-    if (o.targetKind === 'id') {
-      return this.ifmlElements.map((e) => ({ value: e.name, label: `${e.name} (${e.type})` }));
-    }
-    return [];
-  }
-
-  /** Changeable properties available for the operation's current target. */
-  get propertyOptions(): ChangeableProperty[] {
-    const o = this.selectedData?.operation;
-    if (!o) {
-      return [];
-    }
-    if (o.targetKind === 'class') {
-      return this.classService.getClass(o.targetValue)?.properties ?? this.allProperties();
-    }
-    if (o.targetKind === 'id') {
-      const el = this.ifmlElements.find((e) => e.name === o.targetValue);
-      return (el && this.classService.getClass(el.className)?.properties) ?? this.allProperties();
-    }
-    return this.allProperties();
-  }
-
-  private allProperties(): ChangeableProperty[] {
-    const map = new Map<string, ChangeableProperty>();
-    for (const c of this.adaptationClasses) {
-      for (const p of c.properties) {
-        map.set(p.name, p);
-      }
-    }
-    return Array.from(map.values());
-  }
-
-  private selectedPropertyType(): 'boolean' | 'number' {
-    const o = this.selectedData?.operation;
-    const prop = this.propertyOptions.find((p) => p.name === o?.property);
-    return prop ? prop.type : 'boolean';
-  }
-
-  get actionOptions(): { value: string; label: string }[] {
-    return this.selectedPropertyType() === 'boolean'
-      ? [{ value: 'show', label: 'Make visible' }, { value: 'hide', label: 'Make invisible' }]
-      : [{ value: 'increase', label: 'Increase' }, { value: 'decrease', label: 'Decrease' }, { value: 'set', label: 'Set to' }];
-  }
-
-  get showAmount(): boolean {
-    return this.selectedPropertyType() === 'number';
-  }
-
   // --------------------------------------------------------------------------
   // Configuration panel — change handlers
   // --------------------------------------------------------------------------
@@ -389,52 +317,9 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     this.refreshSelectedLabel();
   }
 
-  onOperationTargetKindChange(): void {
-    const o = this.selectedData?.operation;
-    if (!o) {
-      return;
-    }
-    o.targetValue = '';
-    this.syncOperationProperty();
-    this.refreshSelectedLabel();
-  }
-
-  onOperationTargetChange(): void {
-    this.syncOperationProperty();
-    this.refreshSelectedLabel();
-  }
-
-  onOperationPropertyChange(): void {
-    this.syncOperationAction();
-    this.refreshSelectedLabel();
-  }
-
   /** Generic "config changed, just update the label" handler. */
   onConfigChange(): void {
     this.refreshSelectedLabel();
-  }
-
-  private syncOperationProperty(): void {
-    const o = this.selectedData?.operation;
-    if (!o) {
-      return;
-    }
-    const props = this.propertyOptions;
-    if (!props.find((p) => p.name === o.property)) {
-      o.property = props[0]?.name ?? 'visible';
-    }
-    this.syncOperationAction();
-  }
-
-  private syncOperationAction(): void {
-    const o = this.selectedData?.operation;
-    if (!o) {
-      return;
-    }
-    const actions = this.actionOptions.map((a) => a.value);
-    if (!actions.includes(o.action)) {
-      o.action = actions[0];
-    }
   }
 
   private refreshSelectedLabel(): void {
@@ -480,15 +365,7 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
       return `${this.contextLabel(c.propertyKey)} ${c.operator} ${c.value === '' ? '?' : c.value}`;
     }
     if (data.kind === 'operation' && data.operation) {
-      const o = data.operation;
-      const target = o.targetKind === 'global' ? 'all elements'
-        : o.targetKind === 'class' ? `.${o.targetValue || '?'}`
-          : `#${o.targetValue || '?'}`;
-      if (o.property === 'visible') {
-        return `${o.action === 'show' ? 'show' : 'hide'} ${target}`;
-      }
-      const sym = o.action === 'increase' ? '+=' : o.action === 'decrease' ? '-=' : '=';
-      return `${target}: ${o.property} ${sym} ${o.amount}`;
+      return `apply: ${data.operation.operationName || '?'}`;
     }
     return data.kind;
   }
@@ -534,25 +411,12 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       lines.push('    </when>');
       lines.push('    <then>');
-      lines.push(`      ${this.operationXml(rule.op)}`);
+      lines.push(`      <operation ref="${this.esc(rule.op.operationName)}"/>`);
       lines.push('    </then>');
       lines.push('  </adaptationRule>');
     });
     lines.push('</adaptml:AdaptationModel>');
     return lines.join('\n');
-  }
-
-  private operationXml(o: OperationConfig): string {
-    const parts = [`targetKind="${o.targetKind}"`];
-    if (o.targetKind !== 'global') {
-      parts.push(`target="${this.esc(o.targetValue)}"`);
-    }
-    parts.push(`property="${this.esc(o.property)}"`);
-    parts.push(`action="${this.esc(o.action)}"`);
-    if (o.property !== 'visible') {
-      parts.push(`amount="${o.amount}"`);
-    }
-    return `<operation ${parts.join(' ')}/>`;
   }
 
   private esc(value: string): string {

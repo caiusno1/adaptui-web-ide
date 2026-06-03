@@ -2,19 +2,21 @@
 
 A browser-based modeling IDE for **adaptive user interfaces**. It is a web port
 of the AdaptUI tooling and lets you describe an application's interface and its
-adaptation rules through three complementary visual and declarative models:
+adaptation behaviour through five complementary visual and declarative models:
 
 | Tab | Model | Purpose |
 | --- | --- | --- |
-| **IFML** | Interaction Flow Modeling Language | The structure and navigation of the UI (containers, components, events, flows). |
+| **IFML** | Interaction Flow Modeling Language | The abstract structure and navigation of the UI (containers, components, events, flows). |
+| **STYLE** | Style DSL | A concretization of IFML: assigns concrete properties (currently background colour) to elements by id or class. |
 | **CONTEXTML** | Context model | The context properties (age, environment, device type, …) the UI should adapt to. |
-| **ADAPTML** | Adaptation model | Rules linking context conditions to operations that adapt the IFML elements. |
+| **OPERATIONS** | Operation model | Reusable graph transformations (LHS → RHS) over IFML and Style — the adaptation actions. |
+| **ADAPTML** | Adaptation model | Rules linking context conditions to the operations that should run. |
 
-The two headline features are the **graphical IFML editor** and the **graphical
-ADAPTML editor** — diagram canvases (built on
-[mxGraph](https://github.com/jgraph/mxgraph)) where you compose models and export
-them to XML. The three tabs share live state: the elements you draw in IFML and the
-context properties you activate in CONTEXTML feed directly into ADAPTML.
+Every tab is a **graphical editor** — a diagram canvas (built on
+[mxGraph](https://github.com/jgraph/mxgraph)) — and each exports its model to XML.
+The tabs share live state, forming a small model pipeline: IFML elements (with their
+adaptation classes) and activated context properties flow into the Style, Operations
+and ADAPTML editors, and the operations you define are referenced by ADAPTML rules.
 
 ---
 
@@ -36,32 +38,34 @@ declares the properties an adaptation may change on it.
 
 ---
 
-## The adaptation model (CONTEXTML + ADAPTML)
+## The model pipeline
 
-The adaptation system connects three pieces of shared state, kept in Angular
-services so they stay consistent across tabs:
+The tabs are connected through shared Angular services so they stay consistent:
 
 - **Adaptation classes** (`AdaptationClassService`) — every IFML element links to a
   named class (`Container`, `View`, `Label`, `Event`, `Generic`, …). A class
-  declares the **changeable properties** of its elements. The starter set is
-  `visible` (boolean) and `fontSize` (number); the model is property-agnostic, so
-  new properties and classes can be added without touching the editors. The class
-  also doubles as a **selector**: an operation can target every element of a class.
-- **Context properties** (`ContextModelService`) — the CONTEXTML tab lets you
-  *activate* the properties your UI should adapt to (`Age`, `Environment`,
-  `Device Type`, `Gender`). Each has a type (`number` or `enum`) that determines the
-  operators and values available in a condition.
+  declares the **changeable properties** of its elements (starter set: `visible`,
+  `fontSize`). The model is property-agnostic — new properties/classes can be added
+  without touching the editors. A class also doubles as a **selector**.
 - **IFML elements** (`IfmlModelService`) — the IFML editor publishes its elements
-  (name/id, type and adaptation class) so ADAPTML can target real elements.
+  (name/id, type, adaptation class) so the other editors can target real elements.
+- **Context properties** (`ContextModelService`) — CONTEXTML *activates* the
+  properties to adapt to (`Age`, `Environment`, `Device Type`, `Gender`), each typed
+  `number` or `enum`.
+- **Operations** (`OperationModelService`) — the Operations editor publishes the
+  names of the operations it defines, so ADAPTML rules can reference them.
 
-An **adaptation rule** links one or more **conditions** to an **operation**:
+The pieces compose like this:
 
-- A **condition** is expressed over an *activated* context property, e.g. `age > 50`
-  or `Device Type == phone`.
-- An **operation** changes a changeable property of its target. The target is either
-  a single element (by **id**/name), every element of a **class**, or **global**
-  (all elements). Operations include *make visible*, *make invisible* and
-  *increase / decrease / set* font size.
+- **STYLE** *concretizes* IFML — a style rule selects elements by **id** or **class**
+  and assigns concrete properties (currently background colour).
+- **OPERATIONS** are **graph transformations** over IFML and Style, written as
+  **LHS → RHS** rewrite rules in the unified single-graph notation: each pattern
+  node/edge is tagged **«preserve»** (in both sides), **«create»** (RHS only) or
+  **«delete»** (LHS only), and preserve/create nodes carry the property assignments
+  applied on the right-hand side (e.g. `visible = false`, `backgroundColor = #222`).
+- **ADAPTML** rules link one or more **conditions** (over *activated* context
+  properties, e.g. `age > 50`) to a **defined operation** referenced by name.
 
 ---
 
@@ -93,22 +97,20 @@ adaptui-web-ide/
         ├── assets/               ← static assets (mxGraph images are copied here at build time)
         └── app/
             ├── app.module.ts     ← root module; registers components & Material modules
-            ├── app.component.*   ← shell: Material toolbar + the IFML / CONTEXTML / ADAPTML tab group
+            ├── app.component.*   ← shell: Material toolbar + the IFML / STYLE / CONTEXTML / OPERATIONS / ADAPTML tab group
             ├── model/
-            │   └── adaptation.model.ts   ← shared types: adaptation classes, context & IFML refs, rule configs
+            │   ├── adaptation.model.ts      ← adaptation classes, context & IFML refs, ADAPTML rule configs
+            │   └── transformation.model.ts  ← Style DSL + Operation (LHS→RHS) pattern types
             ├── services/         ← cross-tab shared state (singletons)
             │   ├── adaptation-class.service.ts ← registry of adaptation classes & their properties
             │   ├── context-model.service.ts    ← context properties + which are activated
-            │   └── ifml-model.service.ts        ← IFML elements published by the IFML editor
-            ├── tiny-ifml/        ← ★ the graphical IFML editor
-            │   ├── tiny-ifml.component.ts    ← graph setup, palette, navigation flows, class panel, IFML XML export
-            │   ├── tiny-ifml.component.html  ← palette + element properties panel + canvas + action toolbar
-            │   └── tiny-ifml.component.sass  ← editor layout & palette styling
-            ├── adapt-ml/         ← ★ the graphical ADAPTML editor
-            │   ├── adapt-ml.component.ts     ← condition/operation nodes, config panel, ADAPTML XML export
-            │   ├── adapt-ml.component.html   ← palette + rule configuration panel + canvas + action toolbar
-            │   └── adapt-ml.component.sass   ← editor layout & styling
-            └── context-ml/       ← the CONTEXTML tab (activate context properties)
+            │   ├── ifml-model.service.ts        ← IFML elements published by the IFML editor
+            │   └── operation-model.service.ts   ← names of operations defined in the Operations editor
+            ├── tiny-ifml/        ← ★ graphical IFML editor (structure, navigation flows, adaptation class per element)
+            ├── style-ml/         ← ★ graphical Style DSL editor (concretization: selector → background colour)
+            ├── operation-ml/     ← ★ graphical Operations editor (LHS→RHS graph-transformation rules)
+            ├── adapt-ml/         ← ★ graphical ADAPTML editor (conditions → referenced operation)
+            └── context-ml/       ← CONTEXTML tab (activate context properties)
 ```
 
 ### How mxGraph is wired in
@@ -263,6 +265,56 @@ Example output for a `Home` container whose list has an `onSelect` event flowing
 
 ---
 
+## Using the Style editor
+
+The **STYLE** tab concretizes IFML. Add a **Style Rule**, then in its panel pick a
+**selector** (by class or by element id — the lists come live from IFML) and a
+**background colour**. The node is filled with the chosen colour as a live preview.
+**Export Style XML** (`model.style`) produces:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<style:StyleModel xmlns:style="http://adaptui.org/style/1.0" name="AdaptUI Style Model">
+  <style targetClass="View">
+    <property name="backgroundColor" value="#223344"/>
+  </style>
+</style:StyleModel>
+```
+
+## Using the Operations editor
+
+The **OPERATIONS** tab defines reusable **graph transformations** (referenced by
+ADAPTML). The left sidebar manages a list of named operations; the canvas edits the
+selected one as a single **LHS → RHS** rule:
+
+1. Add **Element** / **Style** pattern nodes and draw edges between them to match a
+   sub-pattern of the IFML/Style model.
+2. For each node/edge pick a **role** — **«preserve»** (matched and kept),
+   **«create»** (added on the RHS) or **«delete»** (removed). Roles are colour-coded.
+3. On preserve/create nodes, set the properties to apply on the RHS — *Visibility* /
+   *Font size* for element nodes, *Background colour* for style nodes.
+
+**Export Operations XML** (`model.operations`) derives an explicit `<lhs>`/`<rhs>`
+from the roles:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<op:OperationModel xmlns:op="http://adaptui.org/operations/1.0" name="AdaptUI Operations">
+  <operation name="hideViews">
+    <lhs>
+      <node id="n1" kind="element" match="ViewComponent" selector="class:View"/>
+    </lhs>
+    <rhs>
+      <node id="n1" kind="element" match="ViewComponent" selector="class:View">
+        <set property="visible" value="false"/>
+      </node>
+    </rhs>
+  </operation>
+</op:OperationModel>
+```
+
+---
+
 ## Using the ADAPTML editor
 
 ADAPTML builds adaptation rules out of two node types, connected by arrows. It works
@@ -273,10 +325,8 @@ just like the IFML editor (palette, drag-or-click to add, the same canvas action
 2. In **ADAPTML**, add a **Condition** node and select it. The configuration panel
    lets you pick an activated context property, an operator (offered according to the
    property's type) and a value — e.g. `Age > 50`.
-3. Add an **Operation** node. Configure its **target** (global, by class, or by
-   element id — the class/element lists come live from IFML), the **property**
-   (drawn from the target's adaptation class) and the **action**
-   (*make visible/invisible*, or *increase/decrease/set* for `fontSize`).
+3. Add an **Operation** node and select a **defined operation** by name (these come
+   live from the **OPERATIONS** tab — define them there first).
 4. **Draw an arrow from the Condition to the Operation.** An operation together with
    all of its incoming conditions (combined with AND) forms one adaptation rule.
 
@@ -293,7 +343,7 @@ and its incoming conditions becomes one `<adaptationRule>`:
       <condition property="age" operator="gt" value="50"/>
     </when>
     <then>
-      <operation targetKind="class" target="View" property="visible" action="hide"/>
+      <operation ref="hideViews"/>
     </then>
   </adaptationRule>
 </adaptml:AdaptationModel>
@@ -303,11 +353,11 @@ and its incoming conditions becomes one `<adaptationRule>`:
 
 ## Roadmap
 
-- Round-trip **import** of IFML / ADAPTML XML back into the canvases.
-- A live **preview** that applies the adaptation rules to the IFML model for a given context.
-- User-defined adaptation classes and more changeable properties (colour, layout, order, …) — the model is already property-agnostic.
-- Richer condition logic (OR / grouping) and more IFML constructs (parameter bindings, data flows, actions, modules).
-- Persisting models server-side and code generation from the AdaptUI annotations.
+- Round-trip **import** of the exported XML back into the canvases.
+- A live **preview / interpreter** that applies the operations (and their guarding ADAPTML rules) to the IFML + Style model for a given context.
+- Richer Style properties (colour, font, layout, ordering) and user-defined adaptation classes — both models are already property-agnostic.
+- Fuller graph-transformation support (negative application conditions, multi-object patterns, attribute conditions) and richer ADAPTML condition logic (OR / grouping).
+- More IFML constructs (parameter bindings, data flows, actions, modules); persisting models server-side and code generation.
 
 ---
 

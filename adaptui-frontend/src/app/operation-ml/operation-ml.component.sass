@@ -1,0 +1,183 @@
+.op-editor
+  display: flex
+  height: calc(100vh - 112px)
+  min-height: 480px
+  font-family: Roboto, "Helvetica Neue", sans-serif
+
+.op-side
+  flex: 0 0 250px
+  display: flex
+  flex-direction: column
+  gap: 8px
+  padding: 12px
+  background: #fafafa
+  border-right: 1px solid #e0e0e0
+  overflow-y: auto
+
+.side-title
+  margin: 0 0 4px
+  font-size: 13px
+  font-weight: 500
+  text-transform: uppercase
+  letter-spacing: .04em
+  color: #607d8b
+
+.op-list
+  display: flex
+  flex-direction: column
+  gap: 2px
+
+.op-row
+  display: flex
+  align-items: center
+  gap: 6px
+  padding: 5px 8px
+  border-radius: 5px
+  font-size: 13px
+  color: #37474f
+  cursor: pointer
+
+.op-row:hover
+  background: #eceff1
+
+.op-row.active
+  background: #e0e0ff
+  font-weight: 500
+
+.op-name
+  flex: 1 1 auto
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.op-del
+  border: none
+  background: none
+  color: #90a4ae
+  cursor: pointer
+  font-size: 12px
+
+.add-op
+  display: flex
+  align-items: center
+  gap: 4px
+  padding: 6px 8px
+  font-size: 12px
+  color: #3949ab
+  background: #fff
+  border: 1px dashed #b0bec5
+  border-radius: 6px
+  cursor: pointer
+
+.palette
+  display: flex
+  flex-direction: column
+  gap: 6px
+
+.palette-item
+  display: flex
+  align-items: center
+  gap: 10px
+  padding: 8px 10px
+  border: 1px solid #d8dde2
+  border-left: 4px solid #90a4ae
+  border-radius: 6px
+  background: #fff
+  color: #2c3e50
+  font-size: 13px
+  text-align: left
+  cursor: pointer
+
+.palette-item:hover
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .14)
+
+.palette-element
+  border-left-color: #455a64
+
+.palette-style
+  border-left-color: #6a1b9a
+
+.palette-icon
+  display: flex
+
+.palette-hint
+  display: flex
+  gap: 6px
+  padding: 10px
+  font-size: 11px
+  line-height: 1.4
+  color: #546e7a
+  background: #eef6fc
+  border-radius: 6px
+
+.hint-icon
+  flex: 0 0 auto
+  color: #1976d2
+
+.config-panel
+  padding: 12px
+  border: 1px solid #e0e0e0
+  border-radius: 8px
+  background: #fff
+
+.config-panel h4
+  margin: 0 0 10px
+  font-size: 13px
+  color: #37474f
+
+.assign-head
+  margin: 4px 0 8px
+  font-size: 11px
+  font-weight: 500
+  text-transform: uppercase
+  letter-spacing: .03em
+  color: #90a4ae
+
+.field
+  display: flex
+  flex-direction: column
+  gap: 3px
+  margin-bottom: 10px
+  font-size: 11.5px
+  color: #607d8b
+
+.field select, .field input
+  padding: 6px 8px
+  font-size: 13px
+  color: #263238
+  border: 1px solid #cfd8dc
+  border-radius: 5px
+  background: #fff
+
+.color-row
+  display: flex
+  gap: 8px
+  align-items: center
+
+.color-text
+  flex: 1 1 auto
+
+.op-canvas-wrap
+  display: flex
+  flex-direction: column
+  flex: 1 1 auto
+  min-width: 0
+
+.op-actions
+  display: flex
+  align-items: center
+  gap: 4px
+  padding: 8px 12px
+  border-bottom: 1px solid #e0e0e0
+  background: #fff
+
+.actions-spacer
+  flex: 1 1 auto
+
+.op-graph
+  flex: 1 1 auto
+  position: relative
+  overflow: auto
+  background-color: #f4f6f8
+  background-image: radial-gradient(#d4dde4 1px, transparent 1px)
+  background-size: 20px 20px
