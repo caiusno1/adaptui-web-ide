@@ -1,9 +1,15 @@
-<div style="padding: 30px 30px;">
+<div class="context-ml">
   <h3>Relevant Context Properties</h3>
+  <p class="subtitle">
+    Activate the properties your interface should adapt to. Activated properties
+    become available as conditions in the <b>ADAPTML</b> tab.
+  </p>
   <ul>
-    <li><mat-checkbox>Age</mat-checkbox>  </li>
-    <li><mat-checkbox>Environment</mat-checkbox>  </li>
-    <li><mat-checkbox>Device Type</mat-checkbox>  </li>
-    <li><mat-checkbox>Gender</mat-checkbox>  </li>
-    </ul>
+    <li *ngFor="let p of properties$ | async">
+      <mat-checkbox [checked]="p.activated" (change)="toggle(p.key, $event.checked)">
+        {{ p.label }}
+      </mat-checkbox>
+      <span class="prop-meta">{{ p.type === 'enum' ? (p.values || []).join(' / ') : 'numeric' }}</span>
+    </li>
+  </ul>
 </div>

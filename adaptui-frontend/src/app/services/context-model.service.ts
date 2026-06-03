@@ -1,0 +1,36 @@
+import { Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+import { ContextProperty, DEFAULT_CONTEXT_PROPERTIES } from '../model/adaptation.model';
+
+/**
+ * Holds the CONTEXTML context properties and which of them the user has
+ * activated. The ADAPTML editor uses the activated properties to offer
+ * conditions.
+ */
+@Injectable({ providedIn: 'root' })
+export class ContextModelService {
+  private readonly _properties = new BehaviorSubject<ContextProperty[]>(
+    DEFAULT_CONTEXT_PROPERTIES.map((p) => ({ ...p }))
+  );
+
+  readonly properties$ = this._properties.asObservable();
+
+  get properties(): ContextProperty[] {
+    return this._properties.value;
+  }
+
+  /** The subset of properties the user has activated. */
+  get activated(): ContextProperty[] {
+    return this._properties.value.filter((p) => p.activated);
+  }
+
+  getProperty(key: string): ContextProperty | undefined {
+    return this._properties.value.find((p) => p.key === key);
+  }
+
+  setActivated(key: string, activated: boolean): void {
+    this._properties.next(
+      this._properties.value.map((p) => (p.key === key ? { ...p, activated } : p))
+    );
+  }
+}

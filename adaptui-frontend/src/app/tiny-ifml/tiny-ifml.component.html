@@ -24,6 +24,22 @@
         crosshair appears, then drag an arrow onto a target element.
       </span>
     </div>
+
+    <!-- Properties of the selected element (name + adaptation class) -->
+    <div class="props-panel" *ngIf="selected">
+      <h4>{{ selected.type }}</h4>
+      <label class="field">
+        <span>Name / id</span>
+        <input type="text" [(ngModel)]="selected.name" (ngModelChange)="onNameChange($event)">
+      </label>
+      <label class="field">
+        <span>Adaptation class</span>
+        <select [(ngModel)]="selected.className" (ngModelChange)="onClassChange($event)">
+          <option *ngFor="let c of adaptationClasses" [value]="c.name">{{ c.label }}</option>
+        </select>
+      </label>
+      <div class="props-changeable">Changeable: {{ selectedChangeable }}</div>
+    </div>
   </aside>
 
   <!-- Canvas with its action toolbar -->

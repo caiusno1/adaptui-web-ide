@@ -1,5 +1,6 @@
 import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
+import { FormsModule } from '@angular/forms';
 
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
@@ -9,6 +10,7 @@ import {MatToolbarModule} from '@angular/material/toolbar';
 import {MatIconModule} from '@angular/material/icon';
 import { TinyIfmlComponent } from './tiny-ifml/tiny-ifml.component';
 import { ContextMlComponent } from './context-ml/context-ml.component';
+import { AdaptMlComponent } from './adapt-ml/adapt-ml.component';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {MatButtonModule} from '@angular/material/button';
 import {MatTooltipModule} from '@angular/material/tooltip';
@@ -17,12 +19,14 @@ import {MatTooltipModule} from '@angular/material/tooltip';
   declarations: [
     AppComponent,
     TinyIfmlComponent,
-    ContextMlComponent
+    ContextMlComponent,
+    AdaptMlComponent
   ],
   imports: [
     BrowserModule,
     AppRoutingModule,
     BrowserAnimationsModule,
+    FormsModule,
     MatTabsModule,
     MatToolbarModule,
     MatIconModule,

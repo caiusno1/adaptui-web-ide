@@ -1,4 +1,7 @@
-import { AfterViewInit, Component, ElementRef, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, NgZone, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
+import { AdaptationClass, IfmlElementRef } from '../model/adaptation.model';
+import { AdaptationClassService } from '../services/adaptation-class.service';
+import { IfmlModelService } from '../services/ifml-model.service';
 
 // mxGraph is loaded as a global script (see angular.json -> scripts). These
 // declarations expose the parts of the library we use to the TypeScript
@@ -61,6 +64,15 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
   /** Used to cascade the position of cells added through a button click. */
   private clickInsertCount = 0;
 
+  /** Adaptation class assigned to each element, keyed by mxGraph cell id. */
+  private meta = new Map<string, string>();
+
+  /** Adaptation classes available in the element properties panel. */
+  adaptationClasses: AdaptationClass[] = [];
+
+  /** The element currently selected on the canvas (drives the properties panel). */
+  selected: { cellId: string; name: string; className: string; type: string } | null = null;
+
   /**
    * The IFML elements offered by the palette. The order here also drives the
    * order of the rendered buttons and their drag sources.
@@ -72,12 +84,27 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     { type: 'annotation', label: 'Annotation', icon: 'sticky_note_2', defaultLabel: 'ADAPTUI-ANNOTATION-STYLE=EDIT', width: 220, height: 70, style: 'generatorAnnotation' },
   ];
 
-  constructor() { }
+  constructor(
+    private zone: NgZone,
+    private ifmlService: IfmlModelService,
+    private classService: AdaptationClassService,
+  ) { }
 
-  ngOnInit(): void { }
+  ngOnInit(): void {
+    this.adaptationClasses = this.classService.classes;
+  }
 
   get container() {
     return this.containerElementRef.nativeElement;
+  }
+
+  /** Changeable properties of the selected element's adaptation class. */
+  get selectedChangeable(): string {
+    if (!this.selected) {
+      return '';
+    }
+    const cls = this.classService.getClass(this.selected.className);
+    return cls ? cls.properties.map((p) => p.label).join(', ') : '';
   }
 
   ngAfterViewInit(): void {
@@ -102,6 +129,100 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     this.registerStyles(graph);
     this.registerDragSources(graph);
     this.seedExample(graph);
+
+    // Keep the properties panel in sync with the canvas selection, and publish
+    // the element list (id, type, adaptation class) to other tabs on any change.
+    graph.getSelectionModel().addListener(mxEvent.CHANGE, () => {
+      this.zone.run(() => this.onSelectionChanged());
+    });
+    graph.getModel().addListener(mxEvent.CHANGE, () => {
+      this.zone.run(() => this.publishElements());
+    });
+    this.publishElements();
+  }
+
+  // --------------------------------------------------------------------------
+  // Adaptation: element class, properties panel and cross-tab publishing
+  // --------------------------------------------------------------------------
+
+  /** Default adaptation class for a freshly created element of the given style. */
+  private defaultClassForStyle(style: string): string {
+    if (style.indexOf('viewContainerStyle') >= 0) { return 'Container'; }
+    if (style.indexOf('viewComponentStyle') >= 0) { return 'View'; }
+    if (style.indexOf('eventStyle') >= 0) { return 'Event'; }
+    return 'Generic';
+  }
+
+  private typeOf(cell: any): string {
+    if (this.isViewContainer(cell)) { return 'ViewContainer'; }
+    if (this.isViewComponent(cell)) { return 'ViewComponent'; }
+    if (this.isEvent(cell)) { return 'Event'; }
+    return '';
+  }
+
+  private classOf(cell: any): string {
+    return this.meta.get(cell.id) || this.defaultClassForStyle(this.styleOf(cell));
+  }
+
+  /** Recomputes the published list of IFML elements from the model. */
+  private publishElements(): void {
+    if (!this.graph) {
+      return;
+    }
+    const model = this.graph.getModel();
+    const all: any[] = model.getDescendants(this.graph.getDefaultParent());
+    const refs: IfmlElementRef[] = [];
+    for (const cell of all) {
+      const type = this.typeOf(cell);
+      if (!type) {
+        continue;
+      }
+      refs.push({
+        cellId: cell.id,
+        name: this.cleanName(cell.value) || type,
+        type,
+        className: this.classOf(cell),
+      });
+    }
+    this.ifmlService.setElements(refs);
+  }
+
+  private onSelectionChanged(): void {
+    const cell = this.graph.getSelectionCell();
+    const type = cell ? this.typeOf(cell) : '';
+    if (cell && type) {
+      this.selected = {
+        cellId: cell.id,
+        name: this.cleanName(cell.value) || type,
+        className: this.classOf(cell),
+        type,
+      };
+    } else {
+      this.selected = null;
+    }
+  }
+
+  /** Renames the selected element (panel input). */
+  onNameChange(name: string): void {
+    if (!this.selected) {
+      return;
+    }
+    const cell = this.graph.getModel().getCell(this.selected.cellId);
+    if (cell) {
+      this.graph.getModel().setValue(cell, name);
+      this.selected.name = name;
+      this.publishElements();
+    }
+  }
+
+  /** Reassigns the selected element's adaptation class (panel select). */
+  onClassChange(className: string): void {
+    if (!this.selected) {
+      return;
+    }
+    this.meta.set(this.selected.cellId, className);
+    this.selected.className = className;
+    this.publishElements();
   }
 
   // --------------------------------------------------------------------------
@@ -358,6 +479,9 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
         py = Math.max(24, py);
       }
       const vertex = graph.insertVertex(parent, null, item.defaultLabel, px, py, item.width, item.height, item.style);
+      if (this.typeOf(vertex)) {
+        this.meta.set(vertex.id, this.defaultClassForStyle(item.style));
+      }
       graph.setSelectionCell(vertex);
     } finally {
       model.endUpdate();
@@ -487,7 +611,7 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
       for (const child of childCells) {
         if (this.isEvent(child)) {
           const evMeta = this.isViewContainer(cell) ? 'ViewContainerEvent' : 'ViewComponentEvent';
-          inner.push(`${indent}  <viewElementEvents xsi:type="ifml:${evMeta}" xmi:id="${idMap.get(child)}" name="${this.escapeXml(this.cleanName(child.value) || 'event')}"/>`);
+          inner.push(`${indent}  <viewElementEvents xsi:type="ifml:${evMeta}" xmi:id="${idMap.get(child)}" name="${this.escapeXml(this.cleanName(child.value) || 'event')}" adaptationClass="${this.escapeXml(this.classOf(child))}"/>`);
         }
       }
       // Events synthesised from flows that start at this element.
@@ -501,7 +625,8 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
         }
       }
 
-      const attrs = metaclass === 'ViewContainer' ? ' isLandmark="false" isDefault="false" isXOR="false"' : '';
+      const adaptAttr = ` adaptationClass="${this.escapeXml(this.classOf(cell))}"`;
+      const attrs = adaptAttr + (metaclass === 'ViewContainer' ? ' isLandmark="false" isDefault="false" isXOR="false"' : '');
       if (inner.length === 0) {
         return `${indent}<${containmentRef} xsi:type="ifml:${metaclass}" xmi:id="${id}" name="${name}"${attrs}/>`;
       }
