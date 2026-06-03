@@ -1,5 +1,6 @@
 import { AfterViewInit, Component, ElementRef, NgZone, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
 import { AdaptationClass, IfmlElementRef } from '../model/adaptation.model';
+import { IfmlFlow } from '../model/transformation.model';
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
 
@@ -164,7 +165,7 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     return this.meta.get(cell.id) || this.defaultClassForStyle(this.styleOf(cell));
   }
 
-  /** Recomputes the published list of IFML elements from the model. */
+  /** Recomputes and publishes the IFML elements (with containment) and flows. */
   private publishElements(): void {
     if (!this.graph) {
       return;
@@ -172,19 +173,28 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     const model = this.graph.getModel();
     const all: any[] = model.getDescendants(this.graph.getDefaultParent());
     const refs: IfmlElementRef[] = [];
+    const flows: IfmlFlow[] = [];
     for (const cell of all) {
       const type = this.typeOf(cell);
-      if (!type) {
-        continue;
+      if (type) {
+        const parent = model.getParent(cell);
+        const parentCellId = parent && this.typeOf(parent) ? parent.id : undefined;
+        refs.push({
+          cellId: cell.id,
+          name: this.cleanName(cell.value) || type,
+          type,
+          className: this.classOf(cell),
+          parentCellId,
+        });
+      } else if (model.isEdge(cell)) {
+        const src = model.getTerminal(cell, true);
+        const tgt = model.getTerminal(cell, false);
+        if (src && tgt && this.typeOf(src) && this.typeOf(tgt)) {
+          flows.push({ sourceCellId: src.id, targetCellId: tgt.id });
+        }
       }
-      refs.push({
-        cellId: cell.id,
-        name: this.cleanName(cell.value) || type,
-        type,
-        className: this.classOf(cell),
-      });
     }
-    this.ifmlService.setElements(refs);
+    this.ifmlService.setModel(refs, flows);
   }
 
   private onSelectionChanged(): void {

@@ -1,0 +1,61 @@
+<div class="preview-page">
+
+  <!-- Context side menu -->
+  <aside class="ctx-side">
+    <h3 class="side-title">Context</h3>
+    <p class="ctx-hint">Edit the enabled context factors; the preview re-adapts live.</p>
+
+    <div class="empty-note" *ngIf="activatedContext.length === 0">
+      No context factors are enabled. Activate some in the <b>CONTEXTML</b> tab.
+    </div>
+
+    <label class="field" *ngFor="let p of activatedContext">
+      <span>{{ p.label }}</span>
+      <select *ngIf="p.type === 'enum'" [(ngModel)]="p.value" (ngModelChange)="onContextValue(p.key, p.value)">
+        <option *ngFor="let v of p.values || []" [value]="v">{{ v }}</option>
+      </select>
+      <input *ngIf="p.type === 'number'" type="number" [(ngModel)]="p.value" (ngModelChange)="onContextValue(p.key, p.value)">
+    </label>
+
+    <div class="ctx-status">
+      <mat-icon class="status-icon">auto_fix_high</mat-icon>
+      <span>{{ firedCount }} of {{ ruleCount }} adaptation rule(s) applied</span>
+    </div>
+  </aside>
+
+  <!-- Rendered adaptive UI -->
+  <section class="preview-stage">
+    <div class="stage-inner" *ngIf="hasModel; else noModel">
+      <ng-container *ngFor="let root of renderRoots">
+        <ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: root }"></ng-container>
+      </ng-container>
+    </div>
+    <ng-template #noModel>
+      <div class="placeholder">Build an IFML model in the <b>IFML</b> tab to preview it here.</div>
+    </ng-template>
+  </section>
+
+</div>
+
+<!-- Recursive renderer for a runtime node -->
+<ng-template #nodeTpl let-node>
+  <div
+    class="rt-node"
+    [class.rt-container]="node.type === 'ViewContainer'"
+    [class.rt-component]="node.type === 'ViewComponent'"
+    [class.rt-event]="node.type === 'Event'"
+    [style.background]="node.backgroundColor || null"
+    [style.font-size.px]="node.fontSize">
+    <div class="rt-head">
+      <span class="rt-name">{{ node.name }}</span>
+      <span class="rt-type">{{ node.type }}</span>
+      <span class="rt-badge" *ngIf="node.created">new</span>
+    </div>
+    <div class="rt-flow" *ngIf="node.flowsTo.length">→ {{ node.flowsTo.join(', ') }}</div>
+    <div class="rt-children" *ngIf="node.children.length">
+      <ng-container *ngFor="let c of node.children">
+        <ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: c }"></ng-container>
+      </ng-container>
+    </div>
+  </div>
+</ng-template>

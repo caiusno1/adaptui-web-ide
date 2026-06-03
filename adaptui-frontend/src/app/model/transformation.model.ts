@@ -83,3 +83,41 @@ export interface OperationModel {
 }
 
 export const RELATION_KINDS = ['contains', 'navigatesTo', 'styles'];
+
+// ---------------------------------------------------------------------------
+// Runtime model (the host graph rewritten by the Preview's adaptation engine)
+// ---------------------------------------------------------------------------
+
+/** A navigation flow published by the IFML editor (source may be an event). */
+export interface IfmlFlow {
+  sourceCellId: string;
+  targetCellId: string;
+}
+
+/** A node in the runtime host graph that the Preview renders and rewrites. */
+export interface RuntimeNode {
+  id: string;
+  /** Originating IFML cell id (undefined for nodes created by an operation). */
+  sourceId?: string;
+  name: string;
+  /** ViewContainer | ViewComponent | Event */
+  type: string;
+  className: string;
+  visible: boolean;
+  fontSize: number;
+  /** '' = no explicit background. */
+  backgroundColor: string;
+  created?: boolean;
+}
+
+export interface RuntimeEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: string;
+}
+
+export interface HostGraph {
+  nodes: RuntimeNode[];
+  edges: RuntimeEdge[];
+}

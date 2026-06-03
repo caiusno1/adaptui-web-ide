@@ -3,9 +3,10 @@ import { NgZone } from '@angular/core';
 import { Subscription } from 'rxjs';
 
 import {
-  AdaptNodeData, ConditionConfig, ContextProperty, ENUM_OPERATORS, NUMBER_OPERATORS,
+  AdaptmlRule, AdaptNodeData, ConditionConfig, ContextProperty, ENUM_OPERATORS, NUMBER_OPERATORS,
   OPERATOR_XML, OperationConfig,
 } from '../model/adaptation.model';
+import { AdaptmlModelService } from '../services/adaptml-model.service';
 import { ContextModelService } from '../services/context-model.service';
 import { OperationModelService } from '../services/operation-model.service';
 
@@ -73,6 +74,7 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     private zone: NgZone,
     private contextService: ContextModelService,
     private operationService: OperationModelService,
+    private adaptmlService: AdaptmlModelService,
   ) { }
 
   ngOnInit(): void {
@@ -138,6 +140,10 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     // Keep the config panel in sync with the canvas selection.
     graph.getSelectionModel().addListener(mxEvent.CHANGE, () => {
       this.zone.run(() => this.onSelectionChanged());
+    });
+    // Publish the rules to the Preview whenever the model changes.
+    graph.getModel().addListener(mxEvent.CHANGE, () => {
+      this.zone.run(() => this.publishRules());
     });
   }
 
@@ -374,12 +380,14 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   // ADAPTML XML export
   // --------------------------------------------------------------------------
 
-  private buildAdaptmlXml(): string {
+  /** Collects the adaptation rules (conditions + referenced operation) from the canvas. */
+  private gatherRules(): AdaptmlRule[] {
+    if (!this.graph) {
+      return [];
+    }
     const model = this.graph.getModel();
-    const root = this.graph.getDefaultParent();
-    const all: any[] = model.getDescendants(root);
-
-    const rules: { op: OperationConfig; conditions: ConditionConfig[] }[] = [];
+    const all: any[] = model.getDescendants(this.graph.getDefaultParent());
+    const rules: AdaptmlRule[] = [];
     for (const cell of all) {
       if (!model.isVertex(cell) || this.kindOf(cell) !== 'operation') {
         continue;
@@ -397,9 +405,18 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
           conditions.push(sd.condition);
         }
       }
-      rules.push({ op: opData.operation, conditions });
+      rules.push({ conditions, operationName: opData.operation.operationName });
     }
+    return rules;
+  }
 
+  /** Publishes the rules so the Preview can evaluate and apply them. */
+  private publishRules(): void {
+    this.adaptmlService.setRules(this.gatherRules());
+  }
+
+  private buildAdaptmlXml(): string {
+    const rules = this.gatherRules();
     const lines: string[] = [];
     lines.push('<?xml version="1.0" encoding="UTF-8"?>');
     lines.push('<adaptml:AdaptationModel xmlns:adaptml="http://adaptui.org/adaptml/1.0" name="AdaptUI Adaptation Model">');
@@ -411,7 +428,7 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
       }
       lines.push('    </when>');
       lines.push('    <then>');
-      lines.push(`      <operation ref="${this.esc(rule.op.operationName)}"/>`);
+      lines.push(`      <operation ref="${this.esc(rule.operationName)}"/>`);
       lines.push('    </then>');
       lines.push('  </adaptationRule>');
     });

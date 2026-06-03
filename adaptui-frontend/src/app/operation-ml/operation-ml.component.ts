@@ -81,6 +81,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   private subscriptions = new Subscription();
   private opCounter = 0;
   private clickInsertCount = 0;
+  private loading = false;
 
   constructor(
     private zone: NgZone,
@@ -139,6 +140,11 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     graph.getSelectionModel().addListener(mxEvent.CHANGE, () => {
       this.zone.run(() => this.onSelectionChanged());
     });
+    graph.getModel().addListener(mxEvent.CHANGE, () => {
+      if (!this.loading) {
+        this.zone.run(() => this.publishModels());
+      }
+    });
 
     this.paletteButtons.toArray().forEach((btnRef, index) => {
       const item = this.paletteItems[index];
@@ -161,8 +167,8 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     this.saveCurrentOperation();
     const id = `op_${++this.opCounter}`;
     this.operations.push({ id, name: `operation${this.operations.length + 1}`, nodes: [], edges: [] });
-    this.publishNames();
     this.loadOperation(id);
+    this.publishModels();
   }
 
   selectOperation(id: string): void {
@@ -171,32 +177,36 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     this.saveCurrentOperation();
     this.loadOperation(id);
+    this.publishModels();
   }
 
   deleteOperation(id: string): void {
     const wasCurrent = id === this.currentOpId;
     this.operations = this.operations.filter((o) => o.id !== id);
-    this.publishNames();
     if (wasCurrent) {
       this.currentOpId = null;
       if (this.operations.length) {
         this.loadOperation(this.operations[0].id);
       } else {
         this.addOperation();
+        return;
       }
     }
+    this.publishModels();
   }
 
   onOpNameChange(): void {
     const op = this.operations.find((o) => o.id === this.currentOpId);
     if (op) {
       op.name = this.currentOpName;
-      this.publishNames();
+      this.publishModels();
     }
   }
 
-  private publishNames(): void {
-    this.operationService.setNames(this.operations.map((o) => o.name));
+  /** Saves the current operation and publishes all operations for ADAPTML and the Preview. */
+  private publishModels(): void {
+    this.saveCurrentOperation();
+    this.operationService.setModels(this.operations.map((o) => ({ ...o })));
   }
 
   // --------------------------------------------------------------------------
@@ -255,6 +265,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
 
     const graph = this.graph;
     const model = graph.getModel();
+    this.loading = true;  // suppress publish while rebuilding the canvas
     model.beginUpdate();
     try {
       graph.removeCells(graph.getChildCells(graph.getDefaultParent(), true, true));
@@ -278,6 +289,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     } finally {
       model.endUpdate();
+      this.loading = false;
     }
   }
 

@@ -2,7 +2,8 @@
 
 A browser-based modeling IDE for **adaptive user interfaces**. It is a web port
 of the AdaptUI tooling and lets you describe an application's interface and its
-adaptation behaviour through five complementary visual and declarative models:
+adaptation behaviour through several complementary models — and then **run them**
+in a live preview:
 
 | Tab | Model | Purpose |
 | --- | --- | --- |
@@ -11,12 +12,14 @@ adaptation behaviour through five complementary visual and declarative models:
 | **CONTEXTML** | Context model | The context properties (age, environment, device type, …) the UI should adapt to. |
 | **OPERATIONS** | Operation model | Reusable graph transformations (LHS → RHS) over IFML and Style — the adaptation actions. |
 | **ADAPTML** | Adaptation model | Rules linking context conditions to the operations that should run. |
+| **PREVIEW** | Runtime | Renders the IFML+Style model as a live UI and adapts it by applying the ADAPTML rules for the current context. |
 
-Every tab is a **graphical editor** — a diagram canvas (built on
+The first five tabs are **graphical editors** — diagram canvases (built on
 [mxGraph](https://github.com/jgraph/mxgraph)) — and each exports its model to XML.
-The tabs share live state, forming a small model pipeline: IFML elements (with their
-adaptation classes) and activated context properties flow into the Style, Operations
-and ADAPTML editors, and the operations you define are referenced by ADAPTML rules.
+The tabs share live state, forming a model pipeline: IFML elements (with their
+adaptation classes) and the context properties flow into the Style, Operations and
+ADAPTML editors; the operations you define are referenced by ADAPTML rules; and the
+**Preview** ties it all together at runtime.
 
 ---
 
@@ -53,7 +56,9 @@ The tabs are connected through shared Angular services so they stay consistent:
   properties to adapt to (`Age`, `Environment`, `Device Type`, `Gender`), each typed
   `number` or `enum`.
 - **Operations** (`OperationModelService`) — the Operations editor publishes the
-  names of the operations it defines, so ADAPTML rules can reference them.
+  operations it defines (names for ADAPTML; full LHS/RHS models for the Preview).
+- **Style rules** (`StyleModelService`) and **ADAPTML rules** (`AdaptmlModelService`)
+  are likewise published for the Preview.
 
 The pieces compose like this:
 
@@ -66,6 +71,11 @@ The pieces compose like this:
   applied on the right-hand side (e.g. `visible = false`, `backgroundColor = #222`).
 - **ADAPTML** rules link one or more **conditions** (over *activated* context
   properties, e.g. `age > 50`) to a **defined operation** referenced by name.
+- **PREVIEW** runs the whole stack: it builds a runtime *host graph* from IFML
+  (concretized by Style), and for every ADAPTML rule whose conditions hold under the
+  current context it matches the referenced operation's LHS in the host and rewrites
+  it (RHS). The rewritten graph is rendered as the live UI. See the
+  [adaptation engine](adaptui-frontend/src/app/preview/adaptation-engine.ts).
 
 ---
 
@@ -97,20 +107,25 @@ adaptui-web-ide/
         ├── assets/               ← static assets (mxGraph images are copied here at build time)
         └── app/
             ├── app.module.ts     ← root module; registers components & Material modules
-            ├── app.component.*   ← shell: Material toolbar + the IFML / STYLE / CONTEXTML / OPERATIONS / ADAPTML tab group
+            ├── app.component.*   ← shell: Material toolbar + the IFML / STYLE / CONTEXTML / OPERATIONS / ADAPTML / PREVIEW tabs
             ├── model/
-            │   ├── adaptation.model.ts      ← adaptation classes, context & IFML refs, ADAPTML rule configs
-            │   └── transformation.model.ts  ← Style DSL + Operation (LHS→RHS) pattern types
-            ├── services/         ← cross-tab shared state (singletons)
+            │   ├── adaptation.model.ts      ← adaptation classes, context, IFML refs, ADAPTML rule/configs
+            │   └── transformation.model.ts  ← Style DSL, Operation (LHS→RHS) patterns, runtime host graph
+            ├── services/         ← cross-tab shared state (singletons, BehaviorSubject-backed)
             │   ├── adaptation-class.service.ts ← registry of adaptation classes & their properties
-            │   ├── context-model.service.ts    ← context properties + which are activated
-            │   ├── ifml-model.service.ts        ← IFML elements published by the IFML editor
-            │   └── operation-model.service.ts   ← names of operations defined in the Operations editor
+            │   ├── context-model.service.ts    ← context properties: activation + current value
+            │   ├── ifml-model.service.ts        ← IFML elements (with containment) + navigation flows
+            │   ├── operation-model.service.ts   ← operations defined in the Operations editor (names + full models)
+            │   ├── style-model.service.ts       ← Style rules published for the Preview
+            │   └── adaptml-model.service.ts     ← ADAPTML rules published for the Preview
             ├── tiny-ifml/        ← ★ graphical IFML editor (structure, navigation flows, adaptation class per element)
             ├── style-ml/         ← ★ graphical Style DSL editor (concretization: selector → background colour)
             ├── operation-ml/     ← ★ graphical Operations editor (LHS→RHS graph-transformation rules)
             ├── adapt-ml/         ← ★ graphical ADAPTML editor (conditions → referenced operation)
-            └── context-ml/       ← CONTEXTML tab (activate context properties)
+            ├── context-ml/       ← CONTEXTML tab (activate context properties)
+            └── preview/          ← ★ live adaptive Preview
+                ├── adaptation-engine.ts  ← pure graph-rewrite engine (build host, match, rewrite, render tree)
+                └── preview.component.*   ← context side menu + rendered, self-adapting UI
 ```
 
 ### How mxGraph is wired in
@@ -351,12 +366,37 @@ and its incoming conditions becomes one `<adaptationRule>`:
 
 ---
 
+## Using the Preview
+
+The **PREVIEW** tab renders the live, self-adapting UI:
+
+1. The IFML model is rendered as nested boxes (containers → panels, components →
+   boxes, events → pills, navigation flows → `→ target` hints), concretized by the
+   Style model (e.g. background colours).
+2. The **Context** side menu lists the *enabled* context factors (those activated in
+   CONTEXTML). Edit a value (a number field or an enum dropdown) and the preview
+   **re-adapts instantly**.
+3. For every ADAPTML rule whose conditions hold under the current context, the
+   referenced operation's graph transformation is applied to a runtime copy of the
+   IFML graph: matched elements are modified (`visible`, `fontSize`,
+   `backgroundColor`), and nodes/edges are created or deleted per the rule. The
+   status line shows how many rules are currently applied.
+
+For example, with a rule *"age > 50 → hideViews"* (an operation that sets
+`visible = false` on every `.View`), raising the age above 50 in the side menu makes
+the View components disappear from the preview; lowering it brings them back.
+
+The matching-and-rewriting logic lives in a small, dependency-free module,
+[`adaptation-engine.ts`](adaptui-frontend/src/app/preview/adaptation-engine.ts).
+
+---
+
 ## Roadmap
 
 - Round-trip **import** of the exported XML back into the canvases.
-- A live **preview / interpreter** that applies the operations (and their guarding ADAPTML rules) to the IFML + Style model for a given context.
+- Make navigation flows interactive in the Preview (click an event to navigate).
 - Richer Style properties (colour, font, layout, ordering) and user-defined adaptation classes — both models are already property-agnostic.
-- Fuller graph-transformation support (negative application conditions, multi-object patterns, attribute conditions) and richer ADAPTML condition logic (OR / grouping).
+- Fuller graph-transformation support (negative application conditions, attribute conditions in the LHS) and richer ADAPTML condition logic (OR / grouping).
 - More IFML constructs (parameter bindings, data flows, actions, modules); persisting models server-side and code generation.
 
 ---

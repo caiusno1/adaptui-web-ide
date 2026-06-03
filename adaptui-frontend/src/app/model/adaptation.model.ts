@@ -60,13 +60,15 @@ export interface ContextProperty {
   values?: string[];
   /** Whether the user has activated (enabled) this property in CONTEXTML. */
   activated: boolean;
+  /** Current runtime value (edited in the Preview side menu). */
+  value: string;
 }
 
 export const DEFAULT_CONTEXT_PROPERTIES: ContextProperty[] = [
-  { key: 'age', label: 'Age', type: 'number', activated: false },
-  { key: 'environment', label: 'Environment', type: 'enum', values: ['home', 'work', 'outdoor', 'transit'], activated: false },
-  { key: 'deviceType', label: 'Device Type', type: 'enum', values: ['phone', 'tablet', 'desktop'], activated: false },
-  { key: 'gender', label: 'Gender', type: 'enum', values: ['female', 'male', 'diverse'], activated: false },
+  { key: 'age', label: 'Age', type: 'number', activated: false, value: '30' },
+  { key: 'environment', label: 'Environment', type: 'enum', values: ['home', 'work', 'outdoor', 'transit'], activated: false, value: 'home' },
+  { key: 'deviceType', label: 'Device Type', type: 'enum', values: ['phone', 'tablet', 'desktop'], activated: false, value: 'phone' },
+  { key: 'gender', label: 'Gender', type: 'enum', values: ['female', 'male', 'diverse'], activated: false, value: 'female' },
 ];
 
 /** A live reference to an IFML element, published by the IFML editor. */
@@ -79,6 +81,8 @@ export interface IfmlElementRef {
   type: string;
   /** Name of the adaptation class this element links to. */
   className: string;
+  /** Cell id of the containing IFML element (undefined if top-level). */
+  parentCellId?: string;
 }
 
 export const NUMBER_OPERATORS = ['<', '<=', '>', '>=', '==', '!='];
@@ -110,4 +114,10 @@ export interface AdaptNodeData {
   kind: AdaptNodeKind;
   condition?: ConditionConfig;
   operation?: OperationConfig;
+}
+
+/** A flattened adaptation rule published for the Preview: conditions (AND) + the operation to run. */
+export interface AdaptmlRule {
+  conditions: ConditionConfig[];
+  operationName: string;
 }

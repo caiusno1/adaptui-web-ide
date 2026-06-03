@@ -5,6 +5,7 @@ import { AdaptationClass, IfmlElementRef } from '../model/adaptation.model';
 import { StyleRuleData, StyleSelectorKind } from '../model/transformation.model';
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
+import { StyleModelService } from '../services/style-model.service';
 
 declare var mxGraph: any;
 declare var mxUtils: any;
@@ -48,6 +49,7 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
     private zone: NgZone,
     private ifmlService: IfmlModelService,
     private classService: AdaptationClassService,
+    private styleService: StyleModelService,
   ) { }
 
   ngOnInit(): void {
@@ -96,10 +98,32 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
     graph.getSelectionModel().addListener(mxEvent.CHANGE, () => {
       this.zone.run(() => this.onSelectionChanged());
     });
+    graph.getModel().addListener(mxEvent.CHANGE, () => {
+      this.zone.run(() => this.publishRules());
+    });
 
     this.paletteButtons.toArray().forEach((btnRef) => {
       mxUtils.makeDraggable(btnRef.nativeElement, graph, (_g: any, _e: any, _c: any, x: number, y: number) => this.insertRule(x, y));
     });
+
+    this.publishRules();
+  }
+
+  /** Publishes the current style rules for the Preview to concretize IFML. */
+  private publishRules(): void {
+    if (!this.graph) {
+      return;
+    }
+    const model = this.graph.getModel();
+    const all: any[] = model.getDescendants(this.graph.getDefaultParent());
+    const rules: StyleRuleData[] = [];
+    for (const cell of all) {
+      const rule = model.isVertex(cell) ? this.nodeData.get(cell.id) : null;
+      if (rule && rule.selector) {
+        rules.push({ ...rule });
+      }
+    }
+    this.styleService.setRules(rules);
   }
 
   // --- palette / toolbar ---

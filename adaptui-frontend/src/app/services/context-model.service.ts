@@ -33,4 +33,11 @@ export class ContextModelService {
       this._properties.value.map((p) => (p.key === key ? { ...p, activated } : p))
     );
   }
+
+  /** Updates the current runtime value of a context property (Preview side menu). */
+  setValue(key: string, value: string): void {
+    this._properties.next(
+      this._properties.value.map((p) => (p.key === key ? { ...p, value } : p))
+    );
+  }
 }
