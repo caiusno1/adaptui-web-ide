@@ -87,6 +87,16 @@ export class PreviewComponent implements OnInit, OnDestroy {
     return ['button', 'checkbox', 'inputField', 'link'].indexOf(this.controlFor(node)) >= 0;
   }
 
+  /** True when the Style model gives the node its own look (background or any own-box CSS). */
+  isStyled(node: RenderNode): boolean {
+    return !!node.backgroundColor || Object.keys(node.styles || {}).length > 0;
+  }
+
+  /** A plain node uses the default box chrome; styled nodes and controls render bare. */
+  isPlain(node: RenderNode): boolean {
+    return !this.isControl(node) && !this.isStyled(node);
+  }
+
   /** Resolved CSS for a node: style-model properties plus operation-mutable bg / font size. */
   nodeStyle(node: RenderNode): Record<string, string> {
     const style: Record<string, string> = { ...(node.styles || {}) };
@@ -100,6 +110,11 @@ export class PreviewComponent implements OnInit, OnDestroy {
   /** Style for the outer box — empty for controls, whose own element carries the style. */
   boxStyle(node: RenderNode): Record<string, string> {
     return this.isControl(node) ? {} : this.nodeStyle(node);
+  }
+
+  /** Layout CSS applied to a node's children container (flex / grid). */
+  childStyle(node: RenderNode): Record<string, string> {
+    return node.childStyles || {};
   }
 
   flowLabel(node: RenderNode): string {

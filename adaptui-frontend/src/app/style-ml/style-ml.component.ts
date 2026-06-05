@@ -108,7 +108,47 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
       mxUtils.makeDraggable(btnRef.nativeElement, graph, (_g: any, _e: any, _c: any, x: number, y: number) => this.insertRule(x, y));
     });
 
+    this.seedRules(graph);
     this.publishRules();
+  }
+
+  /** Seeds the Style rules concretizing the Social Media example (Login + News Feed). */
+  private seedRules(graph: any): void {
+    const INDIGO = 'linear-gradient(135deg, #6366f1, #8b5cf6)';
+    const SKY = 'linear-gradient(135deg, #0ea5e9, #22d3ee)';
+    const SOFT = '0 4px 12px rgba(15, 23, 42, .12)';
+    const LARGE = '0 16px 40px rgba(15, 23, 42, .22)';
+    const defs: Array<{ sel: string; control: ControlType; props: Record<string, string> }> = [
+      { sel: 'authView', control: '', props: { backgroundImage: INDIGO, padding: '40', minHeight: '440', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16' } },
+      { sel: 'card', control: '', props: { backgroundColor: '#ffffff', borderRadius: '16', padding: '24', boxShadow: LARGE, width: '320', display: 'flex', flexDirection: 'column', gap: '14' } },
+      { sel: 'heading', control: '', props: { fontSize: '20', fontWeight: '700', color: '#0f172a', textAlign: 'center' } },
+      { sel: 'field', control: 'inputField', props: {} },
+      { sel: 'primaryBtn', control: 'button', props: { backgroundImage: SKY, color: '#ffffff', borderRadius: '10', padding: '12', fontWeight: '600' } },
+      { sel: 'appView', control: '', props: { backgroundColor: '#f1f5f9', padding: '20', minHeight: '480', display: 'flex', flexDirection: 'column', gap: '16' } },
+      { sel: 'menubar', control: '', props: { backgroundColor: '#ffffff', borderRadius: '12', padding: '12', boxShadow: SOFT, display: 'flex', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: '12' } },
+      { sel: 'brand', control: '', props: { fontSize: '18', fontWeight: '800', color: '#6366f1' } },
+      { sel: 'navlink', control: 'button', props: { backgroundColor: '#eef2ff', color: '#4338ca', borderRadius: '8', padding: '8', fontWeight: '600' } },
+      { sel: 'feedgrid', control: '', props: { display: 'grid', gridColumns: '1fr 1fr', gap: '16' } },
+      { sel: 'post', control: '', props: { backgroundColor: '#ffffff', borderRadius: '14', padding: '16', boxShadow: SOFT, borderStyle: 'solid', borderWidth: '1', borderColor: '#e2e8f0', display: 'flex', flexDirection: 'column', gap: '8' } },
+      { sel: 'author', control: '', props: { fontWeight: '700', color: '#0f172a' } },
+      { sel: 'postbody', control: '', props: { color: '#475569', fontSize: '14', lineHeight: '1.5' } },
+    ];
+    const parent = graph.getDefaultParent();
+    const model = graph.getModel();
+    model.beginUpdate();
+    try {
+      let y = 20;
+      for (const d of defs) {
+        const data: StyleRuleData = { selectorKind: 'class', selector: d.sel, control: d.control, props: d.props };
+        const vertex = graph.insertVertex(parent, null, '', 20, y, 220, 70, 'styleRuleStyle');
+        this.nodeData.set(vertex.id, data);
+        model.setValue(vertex, this.labelFor(data));
+        this.applyColor(vertex, data);
+        y += 86;
+      }
+    } finally {
+      model.endUpdate();
+    }
   }
 
   /** Publishes the current style rules for the Preview to concretize IFML. */

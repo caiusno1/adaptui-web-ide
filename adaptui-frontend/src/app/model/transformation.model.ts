@@ -42,6 +42,12 @@ export interface StylePropDef {
   input: StyleInputKind;
   /** Panel section the property is grouped under. */
   group: string;
+  /**
+   * Where the property applies in the Preview: `self` (default) styles the
+   * element's own box; `children` styles the element's children container, so
+   * flex/grid layout properties arrange the contained elements.
+   */
+  target?: 'self' | 'children';
   /** Unit appended to numeric values when applied as CSS (e.g. `px`). */
   unit?: string;
   /** Options for `select` inputs. */
@@ -117,6 +123,30 @@ export const STYLE_PROPERTIES: StylePropDef[] = [
 
   // Effects
   { key: 'boxShadow', label: 'Shadow', css: 'box-shadow', input: 'select', options: SHADOWS, group: 'Effects' },
+
+  // Layout — how this element arranges its children (flex / grid)
+  {
+    key: 'display', label: 'Layout', css: 'display', input: 'select', group: 'Layout (children)', target: 'children',
+    options: [{ label: 'Flex', value: 'flex' }, { label: 'Grid', value: 'grid' }, { label: 'Inline flex', value: 'inline-flex' }, { label: 'Block', value: 'block' }],
+  },
+  {
+    key: 'flexDirection', label: 'Direction (flex)', css: 'flex-direction', input: 'select', group: 'Layout (children)', target: 'children',
+    options: [{ label: 'Row', value: 'row' }, { label: 'Column', value: 'column' }],
+  },
+  {
+    key: 'flexWrap', label: 'Wrap (flex)', css: 'flex-wrap', input: 'select', group: 'Layout (children)', target: 'children',
+    options: [{ label: 'Wrap', value: 'wrap' }, { label: 'No wrap', value: 'nowrap' }],
+  },
+  { key: 'gridColumns', label: 'Columns (grid)', css: 'grid-template-columns', input: 'text', placeholder: 'e.g. 1fr 1fr or repeat(3, 1fr)', group: 'Layout (children)', target: 'children' },
+  {
+    key: 'justifyContent', label: 'Justify', css: 'justify-content', input: 'select', group: 'Layout (children)', target: 'children',
+    options: [{ label: 'Start', value: 'flex-start' }, { label: 'Center', value: 'center' }, { label: 'Space between', value: 'space-between' }, { label: 'Space around', value: 'space-around' }, { label: 'End', value: 'flex-end' }],
+  },
+  {
+    key: 'alignItems', label: 'Align', css: 'align-items', input: 'select', group: 'Layout (children)', target: 'children',
+    options: [{ label: 'Stretch', value: 'stretch' }, { label: 'Start', value: 'flex-start' }, { label: 'Center', value: 'center' }, { label: 'End', value: 'flex-end' }],
+  },
+  { key: 'gap', label: 'Gap', css: 'gap', input: 'number', unit: 'px', placeholder: '12', group: 'Layout (children)', target: 'children' },
 ];
 
 /** Style property keys mirrored onto dedicated RuntimeNode fields (operation-mutable). */
@@ -223,8 +253,10 @@ export interface RuntimeNode {
   backgroundColor: string;
   /** Concrete control resolved from the Style model ('' = default rendering). */
   control: string;
-  /** Resolved CSS the Preview applies (css-property → value), beyond bg/fontSize. */
+  /** Resolved CSS the Preview applies to the element's own box, beyond bg/fontSize. */
   styles: Record<string, string>;
+  /** Resolved CSS applied to the element's children container (flex/grid layout). */
+  childStyles: Record<string, string>;
   created?: boolean;
 }
 

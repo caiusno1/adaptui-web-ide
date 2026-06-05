@@ -254,8 +254,8 @@ Click **Export IFML XML** to download the current diagram as an IFML/XMI documen
 - `NavigationFlow` connections referencing their source event and target element by id;
 - `Comment`s for annotations, linked to the element they sit on.
 
-Example output for a `Home` container whose list has an `onSelect` event flowing to a
-`Product Details` container:
+Example output (a slice of the bundled Social Media example) for a `Login` container
+whose form has a `Sign In` event flowing to the `News Feed` container:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -265,17 +265,16 @@ Example output for a `Home` container whose list has an `onSelect` event flowing
     xmlns:ifml="http://www.omg.org/spec/IFML/20140301"
     name="AdaptUI IFML Model">
   <interactionFlowModel xmi:id="ifml_model" name="AdaptUI IFML Model">
-    <interactionFlowElements xsi:type="ifml:ViewContainer" xmi:id="id_1" name="Home" isLandmark="false" isDefault="false" isXOR="false">
-      <viewElements xsi:type="ifml:ViewComponent" xmi:id="id_2" name="Product List">
-        <viewElementEvents xsi:type="ifml:ViewComponentEvent" xmi:id="id_4" name="onSelect"/>
+    <interactionFlowElements xsi:type="ifml:ViewContainer" xmi:id="id_1" name="Login" isLandmark="false" isDefault="false" isXOR="false">
+      <viewElements xsi:type="ifml:ViewContainer" xmi:id="id_2" name="Login Form">
+        <viewElements xsi:type="ifml:ViewComponent" xmi:id="id_3" name="Email"/>
+        <viewElements xsi:type="ifml:ViewComponent" xmi:id="id_4" name="Password"/>
+        <viewElementEvents xsi:type="ifml:ViewComponentEvent" xmi:id="id_5" name="Sign In"/>
       </viewElements>
     </interactionFlowElements>
-    <interactionFlowElements xsi:type="ifml:ViewContainer" xmi:id="id_5" name="Product Details" isLandmark="false" isDefault="false" isXOR="false">
-      <viewElements xsi:type="ifml:ViewComponent" xmi:id="id_6" name="Details"/>
-    </interactionFlowElements>
-    <interactionFlowConnections xsi:type="ifml:NavigationFlow" xmi:id="id_7" name="view details" sourceInteractionFlowElement="id_4" targetInteractionFlowElement="id_5"/>
+    <interactionFlowElements xsi:type="ifml:ViewContainer" xmi:id="id_6" name="News Feed" isLandmark="false" isDefault="false" isXOR="false"/>
+    <interactionFlowConnections xsi:type="ifml:NavigationFlow" xmi:id="id_7" name="sign in" sourceInteractionFlowElement="id_5" targetInteractionFlowElement="id_6"/>
   </interactionFlowModel>
-  <comments xmi:id="id_3" body="ADAPTUI-ANNOTATION-STYLE=EDIT ADAPTUI-ANNOTATION-SCROLL=ON" annotatedElements="id_2"/>
 </ifml:IFMLModel>
 ```
 
@@ -299,6 +298,10 @@ grouped for convenience:
 - **Border** — style, width, colour, corner radius.
 - **Spacing & size** — padding, margin, width, min height.
 - **Effects** — preset **shadows**.
+- **Layout (children)** — how the element arranges its children: **flex** (direction,
+  wrap, justify, align, gap) or **grid** (template columns, gap). These apply to the
+  element's children container, so a container can lay its contents out as a row, a
+  centered column, or a responsive grid.
 
 Rules cascade like CSS: **class** rules apply first, then **id** rules override them
 per property — so you can set a baseline look on a class and tweak individual elements
@@ -308,14 +311,20 @@ by id. Together these are enough to compose a modern, card-based UI in the Previ
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <style:StyleModel xmlns:style="http://adaptui.org/style/1.0" name="AdaptUI Style Model">
-  <style targetId="Home">
-    <property name="color" value="#ffffff"/>
-    <property name="backgroundImage" value="linear-gradient(135deg, #6366f1, #8b5cf6)"/>
-    <property name="borderRadius" value="16"/>
-    <property name="padding" value="20"/>
-    <property name="boxShadow" value="0 16px 40px rgba(15, 23, 42, .22)"/>
+  <style targetClass="feedgrid">
+    <property name="display" value="grid"/>
+    <property name="gridColumns" value="1fr 1fr"/>
+    <property name="gap" value="16"/>
   </style>
-  <style targetClass="Event">
+  <style targetClass="post">
+    <property name="backgroundColor" value="#ffffff"/>
+    <property name="borderRadius" value="14"/>
+    <property name="padding" value="16"/>
+    <property name="boxShadow" value="0 4px 12px rgba(15, 23, 42, .12)"/>
+    <property name="display" value="flex"/>
+    <property name="flexDirection" value="column"/>
+  </style>
+  <style targetClass="primaryBtn">
     <property name="control" value="button"/>
     <property name="backgroundImage" value="linear-gradient(135deg, #0ea5e9, #22d3ee)"/>
     <property name="borderRadius" value="10"/>
@@ -404,9 +413,11 @@ The **PREVIEW** tab renders the live, self-adapting UI as a **navigable, page-st
 runtime**:
 
 1. Top-level View Containers are **views** — one is shown at a time, with a tab bar to
-   switch between them. Inside a view, components render as boxes and **events render
-   as their concretized control** (button / checkbox / input / link, from the Style
-   model; events default to a button), all concretized by the Style background colours.
+   switch between them. Each element is concretized by the **Style model**: containers
+   become flex/grid layouts, components render with their typography/colours/borders/
+   shadows, and **events render as their concretized control** (button / checkbox /
+   input / link; events default to a button). Styled elements render bare (the Style
+   model fully defines their look); unstyled ones fall back to a labelled box.
 2. **Navigation:** triggering an event's control (clicking a button/link, typing in an
    input, ticking a checkbox) follows its navigation flow and **reroutes to the target
    container's view**. A flow targeting the event's own view re-renders it in place.
@@ -417,19 +428,30 @@ runtime**:
    (modifying `visible` / `fontSize` / `backgroundColor`, creating/deleting
    nodes/edges). The status line shows how many rules are currently applied.
 
-For example, with a rule *"age > 50 OR device == phone → hideViews"*, switching the
-device to *phone* (or raising the age above 50) in the side menu makes the View
-components disappear from the preview; setting it back brings them back.
-
 The matching-and-rewriting logic lives in a small, dependency-free module,
 [`adaptation-engine.ts`](adaptui-frontend/src/app/preview/adaptation-engine.ts).
+
+### The bundled example: a Social Media app
+
+The editors open pre-seeded with a small **Social Media** example, modelled with
+standard IFML constructs only and concretized by the Style tab:
+
+- **Login** view — a centred card (flex column) with a heading, *Email* / *Password*
+  fields (concretized as input controls) and a **Sign In** button whose navigation
+  flow routes to the News Feed.
+- **News Feed** view — a **Menu** bar (flex row, space-between) with the app brand and
+  *Feed* / *Log out* nav buttons (Log out routes back to Login), above a **Feed** that
+  arranges four post cards in a **2-column grid**.
+
+It exercises the whole stack end to end: IFML structure + navigation, the Style DSL's
+flex/grid layout, gradients, cards and controls, and the Preview's page-style routing.
 
 ---
 
 ## Roadmap
 
 - Round-trip **import** of the exported XML back into the canvases.
-- Flex/grid layout properties and per-side spacing in the Style DSL, plus user-defined adaptation classes and reusable style presets/themes.
+- Per-side spacing (individual margins/padding) and reusable style presets/themes in the Style DSL.
 - Make a self-targeting event carry real state (form input, toggles) so it visibly changes its own view.
 - Fuller graph-transformation support (negative application conditions, attribute conditions in the LHS).
 - More IFML constructs (parameter bindings, data flows, actions, modules); persisting models server-side and code generation.

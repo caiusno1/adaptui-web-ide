@@ -48,9 +48,10 @@
 <ng-template #nodeTpl let-node>
   <div
     class="rt-node"
-    [class.rt-container]="node.type === 'ViewContainer' && !isControl(node)"
-    [class.rt-component]="node.type === 'ViewComponent' && !isControl(node)"
-    [class.rt-event]="node.type === 'Event' && !isControl(node)"
+    [class.rt-default]="isPlain(node)"
+    [class.rt-container]="node.type === 'ViewContainer' && isPlain(node)"
+    [class.rt-component]="node.type === 'ViewComponent' && isPlain(node)"
+    [class.rt-event]="node.type === 'Event' && isPlain(node)"
     [class.rt-control-wrap]="isControl(node)"
     [ngStyle]="boxStyle(node)"
     [ngSwitch]="controlFor(node)">
@@ -61,15 +62,14 @@
     <input *ngSwitchCase="'inputField'" class="ctrl-input" [ngStyle]="nodeStyle(node)" [placeholder]="node.name" (change)="onTrigger(node)">
     <a *ngSwitchCase="'link'" class="ctrl-link" [ngStyle]="nodeStyle(node)" href="javascript:void(0)" (click)="onTrigger(node)">{{ node.name }}</a>
     <ng-container *ngSwitchDefault>
-      <div class="rt-head">
+      <div class="rt-head" *ngIf="!node.children.length || node.created">
         <span class="rt-name">{{ node.name }}</span>
-        <span class="rt-type">{{ node.type }}</span>
         <span class="rt-badge" *ngIf="node.created">new</span>
       </div>
     </ng-container>
 
-    <div class="rt-flow" *ngIf="node.flows.length">→ {{ flowLabel(node) }}</div>
-    <div class="rt-children" *ngIf="node.children.length">
+    <div class="rt-flow" *ngIf="node.flows.length && !isControl(node)">→ {{ flowLabel(node) }}</div>
+    <div class="rt-children" *ngIf="node.children.length" [ngStyle]="childStyle(node)">
       <ng-container *ngFor="let c of node.children">
         <ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: c }"></ng-container>
       </ng-container>

@@ -95,12 +95,10 @@
   border-color: #3949ab
 
 .stage-inner
-  display: flex
-  flex-wrap: wrap
-  gap: 16px
-  align-items: flex-start
+  display: block
 
 .ctrl-button
+  box-sizing: border-box
   padding: 6px 14px
   font-size: 13px
   color: #fff
@@ -122,6 +120,7 @@
   cursor: pointer
 
 .ctrl-input
+  box-sizing: border-box
   padding: 6px 8px
   font-size: 13px
   border: 1px solid #cfd8dc
@@ -132,28 +131,31 @@
   font-size: 14px
 
 .rt-node
+  box-sizing: border-box
+
+// Default box chrome for *plain* (unstyled) nodes — styled nodes render bare so
+// the Style model fully defines their look.
+.rt-default
   border-radius: 8px
   padding: 10px
   box-shadow: 0 1px 4px rgba(0, 0, 0, .12)
 
-// Wrapper around an interactive control carries no box chrome of its own.
+// Wrapper around an interactive control dissolves so the control becomes a direct
+// flex/grid item of its parent (stretches in a column, stays inline in a row).
 .rt-control-wrap
-  display: inline-block
-  padding: 0
-  box-shadow: none
-  border-radius: 0
+  display: contents
 
-.rt-container
+.rt-container.rt-default
   border: 1px solid #b0bec5
   background: #ffffff
   min-width: 220px
 
-.rt-component
+.rt-component.rt-default
   border: 1px solid #cfd8dc
   background: #f7fbff
   margin-top: 8px
 
-.rt-event
+.rt-event.rt-default
   display: inline-block
   border: 1px solid #ffcc80
   background: #fff3e0
@@ -169,13 +171,6 @@
 .rt-name
   font-weight: 500
   color: inherit
-
-.rt-type
-  font-size: 10px
-  text-transform: uppercase
-  letter-spacing: .03em
-  color: inherit
-  opacity: .5
 
 .rt-badge
   font-size: 10px

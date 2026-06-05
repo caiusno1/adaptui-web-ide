@@ -31,6 +31,7 @@ export function buildHostGraph(elements: IfmlElementRef[], flows: IfmlFlow[], st
   const nodes: RuntimeNode[] = elements.map((el) => {
     const { props, control } = resolveStyle(el, styles);
     const size = Number(props['fontSize']);
+    const { self, children } = cssFromStyleProps(props);
     return {
       id: el.cellId,
       sourceId: el.cellId,
@@ -41,7 +42,8 @@ export function buildHostGraph(elements: IfmlElementRef[], flows: IfmlFlow[], st
       fontSize: props['fontSize'] && Number.isFinite(size) ? size : DEFAULT_FONT_SIZE,
       backgroundColor: props['backgroundColor'] || '',
       control,
-      styles: cssFromStyleProps(props),
+      styles: self,
+      childStyles: children,
     };
   });
 
@@ -84,23 +86,28 @@ function resolveStyle(el: IfmlElementRef, styles: StyleRuleData[]): { props: Rec
   return { props, control };
 }
 
-/** Maps resolved style props to a CSS map (units applied), excluding bg/fontSize. */
-function cssFromStyleProps(props: Record<string, string>): Record<string, string> {
-  const css: Record<string, string> = {};
+/**
+ * Maps resolved style props to two CSS maps (units applied), excluding bg/fontSize:
+ * `self` for the element's own box and `children` for its children container
+ * (where flex/grid layout properties live).
+ */
+function cssFromStyleProps(props: Record<string, string>): { self: Record<string, string>; children: Record<string, string> } {
+  const self: Record<string, string> = {};
+  const children: Record<string, string> = {};
   for (const def of STYLE_PROPERTIES) {
     if (DEDICATED_STYLE_KEYS.indexOf(def.key) >= 0) {
       continue;
     }
     const v = props[def.key];
     if (v !== undefined && v !== '') {
-      css[def.css] = v + (def.unit || '');
+      (def.target === 'children' ? children : self)[def.css] = v + (def.unit || '');
     }
   }
   // A border only shows if a style is set — default to solid when width/colour are given.
-  if ((css['border-width'] || css['border-color']) && !css['border-style']) {
-    css['border-style'] = 'solid';
+  if ((self['border-width'] || self['border-color']) && !self['border-style']) {
+    self['border-style'] = 'solid';
   }
-  return css;
+  return { self, children };
 }
 
 // ---------------------------------------------------------------------------
@@ -275,6 +282,7 @@ export function applyMatch(op: OperationModel, match: Map<string, string>, host:
         backgroundColor: '',
         control: '',
         styles: {},
+        childStyles: {},
         created: true,
       };
       applyAssignments(node, pn.data);

@@ -759,22 +759,77 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
   // --------------------------------------------------------------------------
 
   /** Inserts a small starter model so the editor is not empty on first load. */
+  /**
+   * Seeds a Social Media example modelled with standard IFML constructs only —
+   * ViewContainers (the Login and News Feed views, plus cards/menu/feed), nested
+   * ViewComponents (headings, fields, posts) and ViewElementEvents wired by
+   * NavigationFlows. The Style tab concretizes the adaptation classes used here
+   * (flex/grid layout, cards, gradients) so the Preview renders a real UI.
+   */
   private seedExample(graph: any): void {
     const parent = graph.getDefaultParent();
     const model = graph.getModel();
+    const cont = (p: any, label: string, cls: string, x: number, y: number, w: number, h: number) => {
+      const v = graph.insertVertex(p, null, label, x, y, w, h, 'viewContainerStyle');
+      this.meta.set(v.id, cls);
+      return v;
+    };
+    const comp = (p: any, label: string, cls: string, x: number, y: number, w: number, h: number) => {
+      const v = graph.insertVertex(p, null, label, x, y, w, h, 'viewComponentStyle');
+      this.meta.set(v.id, cls);
+      return v;
+    };
+    const evt = (p: any, label: string, cls: string, x: number, y: number) => {
+      const v = graph.insertVertex(p, null, label, x, y, 34, 34, 'eventStyle');
+      this.meta.set(v.id, cls);
+      return v;
+    };
+    const flow = (s: any, t: any, label: string) => graph.insertEdge(parent, null, label, s, t, 'navigationFlowStyle');
+
     model.beginUpdate();
     try {
-      const home = graph.insertVertex(parent, null, 'Home', 60, 60, 320, 220, 'viewContainerStyle');
-      const list = graph.insertVertex(home, null, 'Product List', 40, 50, 200, 110, 'viewComponentStyle');
-      graph.insertVertex(list, null, 'ADAPTUI-ANNOTATION-STYLE=EDIT\nADAPTUI-ANNOTATION-SCROLL=ON', 10, 70, 180, 32, 'generatorAnnotation');
-      const select = graph.insertVertex(list, null, 'onSelect', 184, 44, 30, 30, 'eventStyle');
+      // ---- Login view (top-level ViewContainer) ----
+      const login = cont(parent, 'Login', 'authView', 40, 40, 360, 320);
+      const card = cont(login, 'Login Form', 'card', 30, 50, 300, 250);
+      comp(card, 'Welcome back', 'heading', 16, 30, 268, 28);
+      comp(card, 'Email', 'field', 16, 66, 268, 38);
+      comp(card, 'Password', 'field', 16, 110, 268, 38);
+      const signIn = evt(card, 'Sign In', 'primaryBtn', 133, 168);
 
-      const details = graph.insertVertex(parent, null, 'Product Details', 470, 90, 280, 170, 'viewContainerStyle');
-      graph.insertVertex(details, null, 'Details', 40, 50, 200, 90, 'viewComponentStyle');
+      // ---- News Feed view (top-level ViewContainer) ----
+      const feedView = cont(parent, 'News Feed', 'appView', 460, 40, 560, 660);
+      const menu = cont(feedView, 'Menu', 'menubar', 24, 46, 510, 70);
+      comp(menu, 'SocialApp', 'brand', 16, 22, 150, 34);
+      const navFeed = evt(menu, 'Feed', 'navlink', 330, 26);
+      const navLogout = evt(menu, 'Log out', 'navlink', 430, 26);
+      const feed = cont(feedView, 'Feed', 'feedgrid', 24, 134, 510, 500);
+      const post = (label: string, author: string, body: string, x: number, y: number) => {
+        const p = cont(feed, label, 'post', x, y, 230, 200);
+        comp(p, author, 'author', 12, 24, 200, 26);
+        comp(p, body, 'postbody', 12, 56, 206, 120);
+      };
+      post('Post 1', 'Ada Lovelace', 'Just shipped the first algorithm! 🚀', 18, 30);
+      post('Post 2', 'Alan Turing', 'Pondering whether machines can think.', 262, 30);
+      post('Post 3', 'Grace Hopper', 'Found a real bug in the system today 🐛', 18, 250);
+      post('Post 4', 'Linus T.', 'Just for fun: tagging a new release.', 262, 250);
 
-      graph.insertEdge(parent, null, 'view details', select, details, 'navigationFlowStyle');
+      // ---- Navigation flows between events and target views ----
+      flow(signIn, feedView, 'sign in');
+      flow(navFeed, feedView, 'feed');
+      flow(navLogout, login, 'log out');
     } finally {
       model.endUpdate();
+    }
+
+    // Register the example's adaptation classes so both editors list them.
+    const classes: Array<[string, string]> = [
+      ['authView', 'Auth view'], ['card', 'Card'], ['heading', 'Heading'], ['field', 'Field'],
+      ['primaryBtn', 'Primary button'], ['appView', 'App view'], ['menubar', 'Menu bar'],
+      ['brand', 'Brand'], ['navlink', 'Nav link'], ['feedgrid', 'Feed grid'], ['post', 'Post'],
+      ['author', 'Author'], ['postbody', 'Post body'],
+    ];
+    for (const [name, label] of classes) {
+      this.classService.addClass({ name, label, properties: [] });
     }
   }
 }
