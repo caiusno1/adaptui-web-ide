@@ -8,7 +8,7 @@ in a live preview:
 | Tab | Model | Purpose |
 | --- | --- | --- |
 | **IFML** | Interaction Flow Modeling Language | The abstract structure and navigation of the UI (containers, components, events, flows). |
-| **STYLE** | Style DSL | A concretization of IFML: assigns concrete properties (background colour, and a control such as button / checkbox / input for events) to elements by id or class. |
+| **STYLE** | Style DSL | A concretization of IFML: assigns a rich set of concrete properties (typography, colours, gradients, borders, spacing, shadows) and a control (button / checkbox / input for events) to elements by id or class. |
 | **CONTEXTML** | Context model | The context properties (age, environment, device type, …) the UI should adapt to. |
 | **OPERATIONS** | Operation model | Reusable graph transformations (LHS → RHS) over IFML and Style — the adaptation actions. |
 | **ADAPTML** | Adaptation model | Rules linking context conditions (combined by AND/OR gates) to the operations that should run. |
@@ -63,8 +63,9 @@ The tabs are connected through shared Angular services so they stay consistent:
 The pieces compose like this:
 
 - **STYLE** *concretizes* IFML — a style rule selects elements by **id** or **class**
-  and assigns concrete properties: a **background colour** and a **control** (events
-  become buttons, checkboxes, input fields, links, …).
+  and assigns a rich catalog of concrete properties (typography, **gradients**,
+  borders, corner radius, spacing, **shadows**, opacity, …) plus a **control** (events
+  become buttons, checkboxes, input fields, links, …). Class rules cascade under id rules.
 - **OPERATIONS** are **graph transformations** over IFML and Style, written as
   **LHS → RHS** rewrite rules in the unified single-graph notation: each pattern
   node/edge is tagged **«preserve»** (in both sides), **«create»** (RHS only) or
@@ -287,19 +288,37 @@ Example output for a `Home` container whose list has an `onSelect` event flowing
 ## Using the Style editor
 
 The **STYLE** tab concretizes IFML. Add a **Style Rule**, then in its panel pick a
-**selector** (by class or by element id — the lists come live from IFML), a
-**background colour** (the node is filled with it as a live preview) and a **control**
-— how the element is rendered in the Preview (e.g. an event → *button*, *checkbox*,
-*inputField* or *link*). **Export Style XML** (`model.style`) produces:
+**selector** (by class or by element id — the lists come live from IFML), a **control**
+(how the element renders in the Preview — e.g. an event → *button*, *checkbox*,
+*inputField* or *link*) and any of a rich catalog of **concrete style properties**,
+grouped for convenience:
+
+- **Typography** — text colour, font size, weight, family, style, alignment, case,
+  letter spacing, line height.
+- **Background** — background colour, ready-made **gradients**, opacity.
+- **Border** — style, width, colour, corner radius.
+- **Spacing & size** — padding, margin, width, min height.
+- **Effects** — preset **shadows**.
+
+Rules cascade like CSS: **class** rules apply first, then **id** rules override them
+per property — so you can set a baseline look on a class and tweak individual elements
+by id. Together these are enough to compose a modern, card-based UI in the Preview.
+**Export Style XML** (`model.style`) emits one `<property>` per set value:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <style:StyleModel xmlns:style="http://adaptui.org/style/1.0" name="AdaptUI Style Model">
-  <style targetClass="View">
-    <property name="backgroundColor" value="#223344"/>
+  <style targetId="Home">
+    <property name="color" value="#ffffff"/>
+    <property name="backgroundImage" value="linear-gradient(135deg, #6366f1, #8b5cf6)"/>
+    <property name="borderRadius" value="16"/>
+    <property name="padding" value="20"/>
+    <property name="boxShadow" value="0 16px 40px rgba(15, 23, 42, .22)"/>
   </style>
   <style targetClass="Event">
     <property name="control" value="button"/>
+    <property name="backgroundImage" value="linear-gradient(135deg, #0ea5e9, #22d3ee)"/>
+    <property name="borderRadius" value="10"/>
   </style>
 </style:StyleModel>
 ```
@@ -410,7 +429,7 @@ The matching-and-rewriting logic lives in a small, dependency-free module,
 ## Roadmap
 
 - Round-trip **import** of the exported XML back into the canvases.
-- Richer Style properties (font, layout, ordering, more control types) and user-defined adaptation classes — both models are already property-agnostic.
+- Flex/grid layout properties and per-side spacing in the Style DSL, plus user-defined adaptation classes and reusable style presets/themes.
 - Make a self-targeting event carry real state (form input, toggles) so it visibly changes its own view.
 - Fuller graph-transformation support (negative application conditions, attribute conditions in the LHS).
 - More IFML constructs (parameter bindings, data flows, actions, modules); persisting models server-side and code generation.

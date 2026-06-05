@@ -5,7 +5,7 @@
   font-family: Roboto, "Helvetica Neue", sans-serif
 
 .style-side
-  flex: 0 0 230px
+  flex: 0 0 252px
   display: flex
   flex-direction: column
   gap: 8px
@@ -76,13 +76,20 @@
   font-size: 11.5px
   color: #607d8b
 
-.field select, .color-text
+.field select, .field input
   padding: 6px 8px
   font-size: 13px
   color: #263238
   border: 1px solid #cfd8dc
   border-radius: 5px
   background: #fff
+  min-width: 0
+
+.field input[type=color]
+  padding: 0
+  width: 34px
+  height: 30px
+  flex: 0 0 auto
 
 .color-row
   display: flex
@@ -91,6 +98,19 @@
 
 .color-text
   flex: 1 1 auto
+
+.style-group
+  margin-top: 6px
+  padding-top: 8px
+  border-top: 1px solid #eceff1
+
+.group-title
+  margin: 0 0 8px
+  font-size: 11px
+  font-weight: 600
+  text-transform: uppercase
+  letter-spacing: .05em
+  color: #9c27b0
 
 .style-canvas-wrap
   display: flex

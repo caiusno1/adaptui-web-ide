@@ -16,7 +16,7 @@
 
     <div class="palette-hint">
       <mat-icon class="hint-icon">format_paint</mat-icon>
-      <span>A style rule concretizes IFML elements selected by <b>id</b> or <b>class</b> with concrete properties (currently background colour).</span>
+      <span>A style rule concretizes IFML elements selected by <b>id</b> or <b>class</b> with concrete properties — colours, typography, borders, spacing, shadows and more.</span>
     </div>
 
     <div class="config-panel" *ngIf="selectedRule as r">
@@ -36,18 +36,32 @@
         </select>
       </label>
       <label class="field">
-        <span>Background colour</span>
-        <span class="color-row">
-          <input type="color" [(ngModel)]="r.backgroundColor" (ngModelChange)="onRuleChange()">
-          <input type="text" class="color-text" [(ngModel)]="r.backgroundColor" (ngModelChange)="onRuleChange()">
-        </span>
-      </label>
-      <label class="field">
         <span>Control (e.g. for events)</span>
         <select [(ngModel)]="r.control" (ngModelChange)="onRuleChange()">
           <option *ngFor="let c of controlTypes" [value]="c">{{ controlLabel(c) }}</option>
         </select>
       </label>
+
+      <div class="style-group" *ngFor="let g of styleGroups">
+        <h5 class="group-title">{{ g }}</h5>
+        <label class="field" *ngFor="let def of propsInGroup(g)" [ngSwitch]="def.input">
+          <span>{{ def.label }}</span>
+
+          <span class="color-row" *ngSwitchCase="'color'">
+            <input type="color" [ngModel]="propValue(def)" (ngModelChange)="setProp(def, $event)">
+            <input type="text" class="color-text" [ngModel]="rawValue(def)" (ngModelChange)="setProp(def, $event)" placeholder="unset">
+          </span>
+
+          <input *ngSwitchCase="'number'" type="number" [ngModel]="rawValue(def)" (ngModelChange)="setProp(def, $event)" [placeholder]="def.placeholder || ''">
+
+          <input *ngSwitchCase="'text'" type="text" [ngModel]="rawValue(def)" (ngModelChange)="setProp(def, $event)" [placeholder]="def.placeholder || ''">
+
+          <select *ngSwitchCase="'select'" [ngModel]="rawValue(def)" (ngModelChange)="setProp(def, $event)">
+            <option value="">—</option>
+            <option *ngFor="let o of def.options" [value]="o.value">{{ o.label }}</option>
+          </select>
+        </label>
+      </div>
     </div>
   </aside>
 

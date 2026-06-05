@@ -136,6 +136,13 @@
   padding: 10px
   box-shadow: 0 1px 4px rgba(0, 0, 0, .12)
 
+// Wrapper around an interactive control carries no box chrome of its own.
+.rt-control-wrap
+  display: inline-block
+  padding: 0
+  box-shadow: none
+  border-radius: 0
+
 .rt-container
   border: 1px solid #b0bec5
   background: #ffffff
@@ -161,13 +168,14 @@
 
 .rt-name
   font-weight: 500
-  color: #263238
+  color: inherit
 
 .rt-type
   font-size: 10px
   text-transform: uppercase
   letter-spacing: .03em
-  color: #90a4ae
+  color: inherit
+  opacity: .5
 
 .rt-badge
   font-size: 10px

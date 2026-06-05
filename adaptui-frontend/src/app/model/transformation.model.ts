@@ -18,16 +18,120 @@ export type ControlType = '' | 'button' | 'checkbox' | 'inputField' | 'link' | '
 
 export const CONTROL_TYPES: ControlType[] = ['', 'button', 'checkbox', 'inputField', 'link', 'label'];
 
+/** How a style property is edited in the panel. */
+export type StyleInputKind = 'color' | 'number' | 'text' | 'select';
+
+export interface StyleOption {
+  label: string;
+  value: string;
+}
+
+/**
+ * Describes one concrete style property the Style DSL can assign. The catalog
+ * below is the single source of truth that drives the editor panel, the XML
+ * export and how the Preview applies the property as CSS.
+ */
+export interface StylePropDef {
+  /** Stable key — used in `StyleRuleData.props` and as the export property name. */
+  key: string;
+  /** Human label shown in the editor panel. */
+  label: string;
+  /** CSS property the value maps to when rendered in the Preview. */
+  css: string;
+  /** Which editor control edits the value. */
+  input: StyleInputKind;
+  /** Panel section the property is grouped under. */
+  group: string;
+  /** Unit appended to numeric values when applied as CSS (e.g. `px`). */
+  unit?: string;
+  /** Options for `select` inputs. */
+  options?: StyleOption[];
+  /** Placeholder/hint for `text` / `number` inputs. */
+  placeholder?: string;
+}
+
+const GRADIENTS: StyleOption[] = [
+  { label: 'Indigo', value: 'linear-gradient(135deg, #6366f1, #8b5cf6)' },
+  { label: 'Sky', value: 'linear-gradient(135deg, #0ea5e9, #22d3ee)' },
+  { label: 'Sunset', value: 'linear-gradient(135deg, #f59e0b, #ef4444)' },
+  { label: 'Mint', value: 'linear-gradient(135deg, #10b981, #34d399)' },
+  { label: 'Grape', value: 'linear-gradient(135deg, #a855f7, #ec4899)' },
+  { label: 'Slate', value: 'linear-gradient(135deg, #334155, #0f172a)' },
+];
+
+const SHADOWS: StyleOption[] = [
+  { label: 'None', value: 'none' },
+  { label: 'Subtle', value: '0 1px 2px rgba(15, 23, 42, .08)' },
+  { label: 'Soft', value: '0 4px 12px rgba(15, 23, 42, .12)' },
+  { label: 'Medium', value: '0 8px 24px rgba(15, 23, 42, .16)' },
+  { label: 'Large', value: '0 16px 40px rgba(15, 23, 42, .22)' },
+];
+
+/** The full catalog of assignable style properties, grouped for the panel. */
+export const STYLE_PROPERTIES: StylePropDef[] = [
+  // Typography
+  { key: 'color', label: 'Text colour', css: 'color', input: 'color', group: 'Typography' },
+  { key: 'fontSize', label: 'Font size', css: 'font-size', input: 'number', unit: 'px', placeholder: '14', group: 'Typography' },
+  {
+    key: 'fontWeight', label: 'Font weight', css: 'font-weight', input: 'select', group: 'Typography',
+    options: [{ label: 'Light', value: '300' }, { label: 'Normal', value: '400' }, { label: 'Medium', value: '500' }, { label: 'Semibold', value: '600' }, { label: 'Bold', value: '700' }, { label: 'Black', value: '800' }],
+  },
+  {
+    key: 'fontFamily', label: 'Font family', css: 'font-family', input: 'select', group: 'Typography',
+    options: [{ label: 'System', value: 'system-ui, "Segoe UI", Roboto, sans-serif' }, { label: 'Serif', value: 'Georgia, "Times New Roman", serif' }, { label: 'Monospace', value: 'ui-monospace, "SF Mono", Menlo, monospace' }, { label: 'Rounded', value: '"Comic Sans MS", "Segoe UI", sans-serif' }],
+  },
+  {
+    key: 'fontStyle', label: 'Font style', css: 'font-style', input: 'select', group: 'Typography',
+    options: [{ label: 'Normal', value: 'normal' }, { label: 'Italic', value: 'italic' }],
+  },
+  {
+    key: 'textAlign', label: 'Text align', css: 'text-align', input: 'select', group: 'Typography',
+    options: [{ label: 'Left', value: 'left' }, { label: 'Center', value: 'center' }, { label: 'Right', value: 'right' }, { label: 'Justify', value: 'justify' }],
+  },
+  {
+    key: 'textTransform', label: 'Text case', css: 'text-transform', input: 'select', group: 'Typography',
+    options: [{ label: 'None', value: 'none' }, { label: 'UPPERCASE', value: 'uppercase' }, { label: 'Capitalize', value: 'capitalize' }, { label: 'lowercase', value: 'lowercase' }],
+  },
+  { key: 'letterSpacing', label: 'Letter spacing', css: 'letter-spacing', input: 'number', unit: 'px', placeholder: '0', group: 'Typography' },
+  { key: 'lineHeight', label: 'Line height', css: 'line-height', input: 'text', placeholder: '1.5', group: 'Typography' },
+
+  // Background & colour
+  { key: 'backgroundColor', label: 'Background', css: 'background-color', input: 'color', group: 'Background' },
+  { key: 'backgroundImage', label: 'Gradient', css: 'background-image', input: 'select', options: GRADIENTS, group: 'Background' },
+  { key: 'opacity', label: 'Opacity', css: 'opacity', input: 'number', placeholder: '1', group: 'Background' },
+
+  // Border
+  {
+    key: 'borderStyle', label: 'Border style', css: 'border-style', input: 'select', group: 'Border',
+    options: [{ label: 'None', value: 'none' }, { label: 'Solid', value: 'solid' }, { label: 'Dashed', value: 'dashed' }, { label: 'Dotted', value: 'dotted' }],
+  },
+  { key: 'borderWidth', label: 'Border width', css: 'border-width', input: 'number', unit: 'px', placeholder: '1', group: 'Border' },
+  { key: 'borderColor', label: 'Border colour', css: 'border-color', input: 'color', group: 'Border' },
+  { key: 'borderRadius', label: 'Corner radius', css: 'border-radius', input: 'number', unit: 'px', placeholder: '8', group: 'Border' },
+
+  // Spacing & size
+  { key: 'padding', label: 'Padding', css: 'padding', input: 'number', unit: 'px', placeholder: '12', group: 'Spacing & size' },
+  { key: 'margin', label: 'Margin', css: 'margin', input: 'number', unit: 'px', placeholder: '0', group: 'Spacing & size' },
+  { key: 'width', label: 'Width', css: 'width', input: 'text', placeholder: 'e.g. 200px or 100%', group: 'Spacing & size' },
+  { key: 'minHeight', label: 'Min height', css: 'min-height', input: 'number', unit: 'px', placeholder: '0', group: 'Spacing & size' },
+
+  // Effects
+  { key: 'boxShadow', label: 'Shadow', css: 'box-shadow', input: 'select', options: SHADOWS, group: 'Effects' },
+];
+
+/** Style property keys mirrored onto dedicated RuntimeNode fields (operation-mutable). */
+export const DEDICATED_STYLE_KEYS = ['backgroundColor', 'fontSize'];
+
 /** A single style rule: a selector and the concrete properties it assigns. */
 export interface StyleRuleData {
   /** Whether the rule targets one element (`id`) or every element of a class. */
   selectorKind: StyleSelectorKind;
   /** Element name (id) or adaptation-class name. */
   selector: string;
-  /** Background colour. Empty = unset. */
-  backgroundColor: string;
   /** Concrete control to render the element as (e.g. an event → button). '' = unset. */
   control: ControlType;
+  /** Concrete style properties, keyed by `StylePropDef.key`. Empty value = unset. */
+  props: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +223,8 @@ export interface RuntimeNode {
   backgroundColor: string;
   /** Concrete control resolved from the Style model ('' = default rendering). */
   control: string;
+  /** Resolved CSS the Preview applies (css-property → value), beyond bg/fontSize. */
+  styles: Record<string, string>;
   created?: boolean;
 }
 

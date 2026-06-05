@@ -2,7 +2,9 @@ import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, QueryL
 import { Subscription } from 'rxjs';
 
 import { AdaptationClass, IfmlElementRef } from '../model/adaptation.model';
-import { CONTROL_TYPES, ControlType, StyleRuleData, StyleSelectorKind } from '../model/transformation.model';
+import {
+  CONTROL_TYPES, ControlType, STYLE_PROPERTIES, StylePropDef, StyleRuleData, StyleSelectorKind,
+} from '../model/transformation.model';
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
 import { StyleModelService } from '../services/style-model.service';
@@ -120,7 +122,7 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
     for (const cell of all) {
       const rule = model.isVertex(cell) ? this.nodeData.get(cell.id) : null;
       if (rule && rule.selector) {
-        rules.push({ ...rule });
+        rules.push({ ...rule, props: { ...rule.props } });
       }
     }
     this.styleService.setRules(rules);
@@ -138,7 +140,11 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private insertRule(x: number, y: number): void {
     const graph = this.graph;
-    const data: StyleRuleData = { selectorKind: 'class', selector: '', backgroundColor: '#ffeb3b', control: '' };
+    // Seed a clean "card" so a new rule immediately shows a modern look.
+    const data: StyleRuleData = {
+      selectorKind: 'class', selector: '', control: '',
+      props: { backgroundColor: '#ffffff', borderRadius: '12', padding: '14', boxShadow: '0 4px 12px rgba(15, 23, 42, .12)' },
+    };
     graph.getModel().beginUpdate();
     try {
       const vertex = graph.insertVertex(graph.getDefaultParent(), null, '', x, y, 220, 80, 'styleRuleStyle');
@@ -181,12 +187,48 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  // --- selector / control options for the panel ---
+  // --- selector / control / style-property options for the panel ---
 
   readonly controlTypes: ControlType[] = CONTROL_TYPES;
+  readonly styleProperties: StylePropDef[] = STYLE_PROPERTIES;
+  /** Distinct property groups, in catalog order, for the panel sections. */
+  readonly styleGroups: string[] = STYLE_PROPERTIES.reduce<string[]>((groups, def) => {
+    if (groups.indexOf(def.group) < 0) {
+      groups.push(def.group);
+    }
+    return groups;
+  }, []);
 
   controlLabel(c: ControlType): string {
     return c === '' ? 'default' : c;
+  }
+
+  propsInGroup(group: string): StylePropDef[] {
+    return this.styleProperties.filter((p) => p.group === group);
+  }
+
+  /** The raw stored value of a property ('' = unset). */
+  rawValue(def: StylePropDef): string {
+    return this.selectedRule?.props[def.key] ?? '';
+  }
+
+  /** Colour-picker value — defaults to white when unset so the swatch shows something. */
+  propValue(def: StylePropDef): string {
+    const v = this.rawValue(def);
+    return v === '' && def.input === 'color' ? '#ffffff' : v;
+  }
+
+  /** Writes a property value (empty clears it) and refreshes the node + preview. */
+  setProp(def: StylePropDef, value: string): void {
+    if (!this.selectedRule) {
+      return;
+    }
+    if (value === '' || value == null) {
+      delete this.selectedRule.props[def.key];
+    } else {
+      this.selectedRule.props[def.key] = value;
+    }
+    this.refreshSelected();
   }
 
   get selectorOptions(): string[] {
@@ -238,16 +280,17 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private labelFor(rule: StyleRuleData): string {
     const sel = (rule.selectorKind === 'id' ? '#' : '.') + (rule.selector || '?');
-    const props = [`background: ${rule.backgroundColor || '—'}`];
+    const count = Object.keys(rule.props).filter((k) => rule.props[k] !== '').length;
+    const parts = [`${count} ${count === 1 ? 'property' : 'properties'}`];
     if (rule.control) {
-      props.push(`control: ${rule.control}`);
+      parts.push(`control: ${rule.control}`);
     }
-    return `${sel} {\n${props.join('\n')}\n}`;
+    return `${sel} {\n${parts.join('\n')}\n}`;
   }
 
   /** Reflects the chosen background colour on the node for a live preview. */
   private applyColor(cell: any, rule: StyleRuleData): void {
-    const color = rule.backgroundColor || '#ffffff';
+    const color = rule.props['backgroundColor'] || '#ffffff';
     this.graph.setCellStyles(mxConstants.STYLE_FILLCOLOR, color, [cell]);
   }
 
@@ -268,8 +311,11 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
         ? `targetId="${this.esc(rule.selector)}"`
         : `targetClass="${this.esc(rule.selector)}"`;
       lines.push(`  <style ${sel}>`);
-      if (rule.backgroundColor) {
-        lines.push(`    <property name="backgroundColor" value="${this.esc(rule.backgroundColor)}"/>`);
+      for (const def of this.styleProperties) {
+        const v = rule.props[def.key];
+        if (v !== undefined && v !== '') {
+          lines.push(`    <property name="${def.key}" value="${this.esc(v)}"/>`);
+        }
       }
       if (rule.control) {
         lines.push(`    <property name="control" value="${this.esc(rule.control)}"/>`);

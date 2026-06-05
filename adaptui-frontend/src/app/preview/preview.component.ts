@@ -82,6 +82,26 @@ export class PreviewComponent implements OnInit, OnDestroy {
     return node.control || (node.type === 'Event' ? 'button' : '');
   }
 
+  /** True when the node renders as an interactive control rather than a box. */
+  isControl(node: RenderNode): boolean {
+    return ['button', 'checkbox', 'inputField', 'link'].indexOf(this.controlFor(node)) >= 0;
+  }
+
+  /** Resolved CSS for a node: style-model properties plus operation-mutable bg / font size. */
+  nodeStyle(node: RenderNode): Record<string, string> {
+    const style: Record<string, string> = { ...(node.styles || {}) };
+    if (node.backgroundColor) {
+      style['background-color'] = node.backgroundColor;
+    }
+    style['font-size'] = node.fontSize + 'px';
+    return style;
+  }
+
+  /** Style for the outer box — empty for controls, whose own element carries the style. */
+  boxStyle(node: RenderNode): Record<string, string> {
+    return this.isControl(node) ? {} : this.nodeStyle(node);
+  }
+
   flowLabel(node: RenderNode): string {
     return node.flows.map((f) => f.targetName).join(', ');
   }

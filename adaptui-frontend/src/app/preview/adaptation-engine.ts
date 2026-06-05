@@ -12,7 +12,8 @@
 
 import { AdaptmlRule, BoolExpr, ConditionConfig, ContextProperty, IfmlElementRef } from '../model/adaptation.model';
 import {
-  HostGraph, IfmlFlow, OperationModel, PatternNodeData, RuntimeEdge, RuntimeNode, StyleRuleData,
+  DEDICATED_STYLE_KEYS, HostGraph, IfmlFlow, OperationModel, PatternNodeData, RuntimeEdge, RuntimeNode,
+  STYLE_PROPERTIES, StyleRuleData,
 } from '../model/transformation.model';
 
 export const DEFAULT_FONT_SIZE = 14;
@@ -27,17 +28,22 @@ function genId(prefix: string): string {
 // ---------------------------------------------------------------------------
 
 export function buildHostGraph(elements: IfmlElementRef[], flows: IfmlFlow[], styles: StyleRuleData[]): HostGraph {
-  const nodes: RuntimeNode[] = elements.map((el) => ({
-    id: el.cellId,
-    sourceId: el.cellId,
-    name: el.name,
-    type: el.type,
-    className: el.className,
-    visible: true,
-    fontSize: DEFAULT_FONT_SIZE,
-    backgroundColor: resolveStyle(el, styles, 'background'),
-    control: resolveStyle(el, styles, 'control'),
-  }));
+  const nodes: RuntimeNode[] = elements.map((el) => {
+    const { props, control } = resolveStyle(el, styles);
+    const size = Number(props['fontSize']);
+    return {
+      id: el.cellId,
+      sourceId: el.cellId,
+      name: el.name,
+      type: el.type,
+      className: el.className,
+      visible: true,
+      fontSize: props['fontSize'] && Number.isFinite(size) ? size : DEFAULT_FONT_SIZE,
+      backgroundColor: props['backgroundColor'] || '',
+      control,
+      styles: cssFromStyleProps(props),
+    };
+  });
 
   const ids = new Set(nodes.map((n) => n.id));
   const edges: RuntimeEdge[] = [];
@@ -54,15 +60,47 @@ export function buildHostGraph(elements: IfmlElementRef[], flows: IfmlFlow[], st
   return { nodes, edges };
 }
 
-/** Resolves a concrete style property for an element (id selector wins over class). */
-function resolveStyle(el: IfmlElementRef, styles: StyleRuleData[], prop: 'background' | 'control'): string {
-  const value = (s: StyleRuleData) => (prop === 'background' ? s.backgroundColor : s.control);
-  const byId = styles.find((s) => s.selectorKind === 'id' && s.selector === el.name && value(s));
-  if (byId) {
-    return value(byId);
+/**
+ * Resolves the style props and control for an element. Class rules apply first,
+ * then id rules — so an id selector overrides a class selector per property.
+ */
+function resolveStyle(el: IfmlElementRef, styles: StyleRuleData[]): { props: Record<string, string>; control: string } {
+  const props: Record<string, string> = {};
+  let control = '';
+  const matching = [
+    ...styles.filter((s) => s.selectorKind === 'class' && s.selector === el.className),
+    ...styles.filter((s) => s.selectorKind === 'id' && s.selector === el.name),
+  ];
+  for (const s of matching) {
+    if (s.control) {
+      control = s.control;
+    }
+    for (const [k, v] of Object.entries(s.props || {})) {
+      if (v !== undefined && v !== '') {
+        props[k] = v;
+      }
+    }
   }
-  const byClass = styles.find((s) => s.selectorKind === 'class' && s.selector === el.className && value(s));
-  return byClass ? value(byClass) : '';
+  return { props, control };
+}
+
+/** Maps resolved style props to a CSS map (units applied), excluding bg/fontSize. */
+function cssFromStyleProps(props: Record<string, string>): Record<string, string> {
+  const css: Record<string, string> = {};
+  for (const def of STYLE_PROPERTIES) {
+    if (DEDICATED_STYLE_KEYS.indexOf(def.key) >= 0) {
+      continue;
+    }
+    const v = props[def.key];
+    if (v !== undefined && v !== '') {
+      css[def.css] = v + (def.unit || '');
+    }
+  }
+  // A border only shows if a style is set — default to solid when width/colour are given.
+  if ((css['border-width'] || css['border-color']) && !css['border-style']) {
+    css['border-style'] = 'solid';
+  }
+  return css;
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +274,7 @@ export function applyMatch(op: OperationModel, match: Map<string, string>, host:
         fontSize: DEFAULT_FONT_SIZE,
         backgroundColor: '',
         control: '',
+        styles: {},
         created: true,
       };
       applyAssignments(node, pn.data);
