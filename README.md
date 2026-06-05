@@ -8,10 +8,10 @@ in a live preview:
 | Tab | Model | Purpose |
 | --- | --- | --- |
 | **IFML** | Interaction Flow Modeling Language | The abstract structure and navigation of the UI (containers, components, events, flows). |
-| **STYLE** | Style DSL | A concretization of IFML: assigns concrete properties (currently background colour) to elements by id or class. |
+| **STYLE** | Style DSL | A concretization of IFML: assigns concrete properties (background colour, and a control such as button / checkbox / input for events) to elements by id or class. |
 | **CONTEXTML** | Context model | The context properties (age, environment, device type, …) the UI should adapt to. |
 | **OPERATIONS** | Operation model | Reusable graph transformations (LHS → RHS) over IFML and Style — the adaptation actions. |
-| **ADAPTML** | Adaptation model | Rules linking context conditions to the operations that should run. |
+| **ADAPTML** | Adaptation model | Rules linking context conditions (combined by AND/OR gates) to the operations that should run. |
 | **PREVIEW** | Runtime | Renders the IFML+Style model as a live UI and adapts it by applying the ADAPTML rules for the current context. |
 
 The first five tabs are **graphical editors** — diagram canvases (built on
@@ -63,18 +63,22 @@ The tabs are connected through shared Angular services so they stay consistent:
 The pieces compose like this:
 
 - **STYLE** *concretizes* IFML — a style rule selects elements by **id** or **class**
-  and assigns concrete properties (currently background colour).
+  and assigns concrete properties: a **background colour** and a **control** (events
+  become buttons, checkboxes, input fields, links, …).
 - **OPERATIONS** are **graph transformations** over IFML and Style, written as
   **LHS → RHS** rewrite rules in the unified single-graph notation: each pattern
   node/edge is tagged **«preserve»** (in both sides), **«create»** (RHS only) or
   **«delete»** (LHS only), and preserve/create nodes carry the property assignments
   applied on the right-hand side (e.g. `visible = false`, `backgroundColor = #222`).
-- **ADAPTML** rules link one or more **conditions** (over *activated* context
-  properties, e.g. `age > 50`) to a **defined operation** referenced by name.
+- **ADAPTML** rules link **conditions** (over *activated* context properties, e.g.
+  `age > 50`) to a **defined operation**. Conditions are combined by **«AND» / «OR»
+  gate** nodes into a boolean expression; an operation fires **only** when its
+  expression is satisfied (an operation with no conditions never fires).
 - **PREVIEW** runs the whole stack: it builds a runtime *host graph* from IFML
-  (concretized by Style), and for every ADAPTML rule whose conditions hold under the
-  current context it matches the referenced operation's LHS in the host and rewrites
-  it (RHS). The rewritten graph is rendered as the live UI. See the
+  (concretized by Style), and for every ADAPTML rule whose condition expression holds
+  under the current context it matches the referenced operation's LHS in the host and
+  rewrites it (RHS). The rewritten graph is rendered as a navigable, page-style UI —
+  triggering an event's control reroutes between views. See the
   [adaptation engine](adaptui-frontend/src/app/preview/adaptation-engine.ts).
 
 ---
@@ -283,15 +287,19 @@ Example output for a `Home` container whose list has an `onSelect` event flowing
 ## Using the Style editor
 
 The **STYLE** tab concretizes IFML. Add a **Style Rule**, then in its panel pick a
-**selector** (by class or by element id — the lists come live from IFML) and a
-**background colour**. The node is filled with the chosen colour as a live preview.
-**Export Style XML** (`model.style`) produces:
+**selector** (by class or by element id — the lists come live from IFML), a
+**background colour** (the node is filled with it as a live preview) and a **control**
+— how the element is rendered in the Preview (e.g. an event → *button*, *checkbox*,
+*inputField* or *link*). **Export Style XML** (`model.style`) produces:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <style:StyleModel xmlns:style="http://adaptui.org/style/1.0" name="AdaptUI Style Model">
   <style targetClass="View">
     <property name="backgroundColor" value="#223344"/>
+  </style>
+  <style targetClass="Event">
+    <property name="control" value="button"/>
   </style>
 </style:StyleModel>
 ```
@@ -332,30 +340,35 @@ from the roles:
 
 ## Using the ADAPTML editor
 
-ADAPTML builds adaptation rules out of two node types, connected by arrows. It works
-just like the IFML editor (palette, drag-or-click to add, the same canvas actions).
+ADAPTML builds adaptation rules out of **Condition**, **AND/OR gate** and
+**Operation** nodes, connected by arrows. It works just like the IFML editor.
 
 1. **Activate context properties** in the **CONTEXTML** tab — only activated
    properties can be used in conditions.
-2. In **ADAPTML**, add a **Condition** node and select it. The configuration panel
-   lets you pick an activated context property, an operator (offered according to the
-   property's type) and a value — e.g. `Age > 50`.
-3. Add an **Operation** node and select a **defined operation** by name (these come
-   live from the **OPERATIONS** tab — define them there first).
-4. **Draw an arrow from the Condition to the Operation.** An operation together with
-   all of its incoming conditions (combined with AND) forms one adaptation rule.
+2. Add **Condition** nodes (pick a context property, operator and value, e.g.
+   `Age > 50`).
+3. Add **AND** / **OR** gate nodes and wire conditions (and other gates) into them
+   for nested/mixed boolean logic. The gate's panel toggles AND ↔ OR.
+4. Add an **Operation** node and select a **defined operation** by name (live from the
+   **OPERATIONS** tab — define them there first).
+5. **Draw arrows** condition/gate → gate → operation. The operation fires **only**
+   when its resulting boolean expression is satisfied. Conditions wired directly to an
+   operation are AND-combined; an operation with no conditions never fires.
 
 ## Exporting to ADAPTML XML
 
-Click **Export ADAPTML XML** to download the model (`model.adaptml`). Each operation
-and its incoming conditions becomes one `<adaptationRule>`:
+Click **Export ADAPTML XML** to download the model (`model.adaptml`). The `<when>`
+mirrors the boolean expression (`<and>` / `<or>` / `<condition>`):
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <adaptml:AdaptationModel xmlns:adaptml="http://adaptui.org/adaptml/1.0" name="AdaptUI Adaptation Model">
   <adaptationRule id="rule_1">
     <when>
-      <condition property="age" operator="gt" value="50"/>
+      <or>
+        <condition property="age" operator="gt" value="50"/>
+        <condition property="deviceType" operator="eq" value="phone"/>
+      </or>
     </when>
     <then>
       <operation ref="hideViews"/>
@@ -368,23 +381,26 @@ and its incoming conditions becomes one `<adaptationRule>`:
 
 ## Using the Preview
 
-The **PREVIEW** tab renders the live, self-adapting UI:
+The **PREVIEW** tab renders the live, self-adapting UI as a **navigable, page-style
+runtime**:
 
-1. The IFML model is rendered as nested boxes (containers → panels, components →
-   boxes, events → pills, navigation flows → `→ target` hints), concretized by the
-   Style model (e.g. background colours).
-2. The **Context** side menu lists the *enabled* context factors (those activated in
-   CONTEXTML). Edit a value (a number field or an enum dropdown) and the preview
-   **re-adapts instantly**.
-3. For every ADAPTML rule whose conditions hold under the current context, the
-   referenced operation's graph transformation is applied to a runtime copy of the
-   IFML graph: matched elements are modified (`visible`, `fontSize`,
-   `backgroundColor`), and nodes/edges are created or deleted per the rule. The
-   status line shows how many rules are currently applied.
+1. Top-level View Containers are **views** — one is shown at a time, with a tab bar to
+   switch between them. Inside a view, components render as boxes and **events render
+   as their concretized control** (button / checkbox / input / link, from the Style
+   model; events default to a button), all concretized by the Style background colours.
+2. **Navigation:** triggering an event's control (clicking a button/link, typing in an
+   input, ticking a checkbox) follows its navigation flow and **reroutes to the target
+   container's view**. A flow targeting the event's own view re-renders it in place.
+3. The **Context** side menu lists the *enabled* context factors. Edit a value (a
+   number field or an enum dropdown) and the preview **re-adapts instantly**.
+4. For every ADAPTML rule whose boolean condition expression holds, the referenced
+   operation's graph transformation is applied to a runtime copy of the IFML graph
+   (modifying `visible` / `fontSize` / `backgroundColor`, creating/deleting
+   nodes/edges). The status line shows how many rules are currently applied.
 
-For example, with a rule *"age > 50 → hideViews"* (an operation that sets
-`visible = false` on every `.View`), raising the age above 50 in the side menu makes
-the View components disappear from the preview; lowering it brings them back.
+For example, with a rule *"age > 50 OR device == phone → hideViews"*, switching the
+device to *phone* (or raising the age above 50) in the side menu makes the View
+components disappear from the preview; setting it back brings them back.
 
 The matching-and-rewriting logic lives in a small, dependency-free module,
 [`adaptation-engine.ts`](adaptui-frontend/src/app/preview/adaptation-engine.ts).
@@ -394,9 +410,9 @@ The matching-and-rewriting logic lives in a small, dependency-free module,
 ## Roadmap
 
 - Round-trip **import** of the exported XML back into the canvases.
-- Make navigation flows interactive in the Preview (click an event to navigate).
-- Richer Style properties (colour, font, layout, ordering) and user-defined adaptation classes — both models are already property-agnostic.
-- Fuller graph-transformation support (negative application conditions, attribute conditions in the LHS) and richer ADAPTML condition logic (OR / grouping).
+- Richer Style properties (font, layout, ordering, more control types) and user-defined adaptation classes — both models are already property-agnostic.
+- Make a self-targeting event carry real state (form input, toggles) so it visibly changes its own view.
+- Fuller graph-transformation support (negative application conditions, attribute conditions in the LHS).
 - More IFML constructs (parameter bindings, data flows, actions, modules); persisting models server-side and code generation.
 
 ---

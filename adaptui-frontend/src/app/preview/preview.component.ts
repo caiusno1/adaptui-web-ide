@@ -13,9 +13,10 @@ import { buildHostGraph, buildRenderTree, RenderNode, ruleFires, runAdaptation }
 
 /**
  * Live preview of the adaptive UI. It renders the IFML model concretized by the
- * Style model, then applies the ADAPTML rules (their operations rewrite a
- * runtime copy of the IFML graph) for the current context. Editing a context
- * factor in the side menu re-runs the adaptation and updates the preview.
+ * Style model as a page-style runtime: top-level containers are *views*, one of
+ * which is active. The ADAPTML rules adapt a runtime copy of the IFML graph for
+ * the current context (editable in the side menu), and triggering an event's
+ * control (button / input / checkbox) reroutes navigation to the flow's target view.
  */
 @Component({
   selector: 'app-preview',
@@ -24,7 +25,10 @@ import { buildHostGraph, buildRenderTree, RenderNode, ruleFires, runAdaptation }
 })
 export class PreviewComponent implements OnInit, OnDestroy {
 
-  renderRoots: RenderNode[] = [];
+  /** Top-level containers = views; one is shown at a time. */
+  views: RenderNode[] = [];
+  activeViewId: string | null = null;
+
   activatedContext: ContextProperty[] = [];
   ruleCount = 0;
   firedCount = 0;
@@ -49,8 +53,8 @@ export class PreviewComponent implements OnInit, OnDestroy {
         this.operationService.models$,
         this.adaptmlService.rules$,
         this.contextService.properties$,
-        // Coalesce synchronous bursts and run the recompute in a fresh change
-        // detection turn (avoids ExpressionChangedAfterChecked at load time).
+        // Coalesce synchronous bursts and recompute in a fresh change-detection
+        // turn (avoids ExpressionChangedAfterChecked at load time).
       ]).pipe(debounceTime(0)).subscribe(([elements, flows, styles, ops, rules, ctx]) => {
         this.recompute(elements, flows, styles, ops, rules, ctx);
       })
@@ -61,8 +65,36 @@ export class PreviewComponent implements OnInit, OnDestroy {
     this.subscriptions.unsubscribe();
   }
 
+  get activeView(): RenderNode | null {
+    return this.views.find((v) => v.id === this.activeViewId) ?? null;
+  }
+
+  setActiveView(id: string): void {
+    this.activeViewId = id;
+  }
+
   onContextValue(key: string, value: string): void {
     this.contextService.setValue(key, value);
+  }
+
+  /** The concrete control to render a node as (events default to a button). */
+  controlFor(node: RenderNode): string {
+    return node.control || (node.type === 'Event' ? 'button' : '');
+  }
+
+  flowLabel(node: RenderNode): string {
+    return node.flows.map((f) => f.targetName).join(', ');
+  }
+
+  /** Triggering an event reroutes to the flow's target view (or re-renders in place when self-targeting). */
+  onTrigger(node: RenderNode): void {
+    const flow = node.flows[0];
+    if (!flow || !flow.targetViewId) {
+      return;
+    }
+    if (this.views.some((v) => v.id === flow.targetViewId)) {
+      this.activeViewId = flow.targetViewId;
+    }
   }
 
   private recompute(
@@ -78,6 +110,10 @@ export class PreviewComponent implements OnInit, OnDestroy {
 
     const base = buildHostGraph(elements, flows, styles);
     const host = runAdaptation(base, rules, ops, ctx);
-    this.renderRoots = buildRenderTree(host);
+    this.views = buildRenderTree(host);
+
+    if (!this.views.some((v) => v.id === this.activeViewId)) {
+      this.activeViewId = this.views.length ? this.views[0].id : null;
+    }
   }
 }

@@ -10,14 +10,24 @@
 
 export type StyleSelectorKind = 'id' | 'class';
 
+/**
+ * The concrete UI control an element is concretized to. Mainly used to render
+ * IFML events as buttons / checkboxes / input fields etc. '' = default rendering.
+ */
+export type ControlType = '' | 'button' | 'checkbox' | 'inputField' | 'link' | 'label';
+
+export const CONTROL_TYPES: ControlType[] = ['', 'button', 'checkbox', 'inputField', 'link', 'label'];
+
 /** A single style rule: a selector and the concrete properties it assigns. */
 export interface StyleRuleData {
   /** Whether the rule targets one element (`id`) or every element of a class. */
   selectorKind: StyleSelectorKind;
   /** Element name (id) or adaptation-class name. */
   selector: string;
-  /** Currently the only supported concrete property. Empty = unset. */
+  /** Background colour. Empty = unset. */
   backgroundColor: string;
+  /** Concrete control to render the element as (e.g. an event → button). '' = unset. */
+  control: ControlType;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +117,8 @@ export interface RuntimeNode {
   fontSize: number;
   /** '' = no explicit background. */
   backgroundColor: string;
+  /** Concrete control resolved from the Style model ('' = default rendering). */
+  control: string;
   created?: boolean;
 }
 

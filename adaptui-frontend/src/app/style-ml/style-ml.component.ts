@@ -2,7 +2,7 @@ import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, QueryL
 import { Subscription } from 'rxjs';
 
 import { AdaptationClass, IfmlElementRef } from '../model/adaptation.model';
-import { StyleRuleData, StyleSelectorKind } from '../model/transformation.model';
+import { CONTROL_TYPES, ControlType, StyleRuleData, StyleSelectorKind } from '../model/transformation.model';
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
 import { StyleModelService } from '../services/style-model.service';
@@ -138,7 +138,7 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private insertRule(x: number, y: number): void {
     const graph = this.graph;
-    const data: StyleRuleData = { selectorKind: 'class', selector: '', backgroundColor: '#ffeb3b' };
+    const data: StyleRuleData = { selectorKind: 'class', selector: '', backgroundColor: '#ffeb3b', control: '' };
     graph.getModel().beginUpdate();
     try {
       const vertex = graph.insertVertex(graph.getDefaultParent(), null, '', x, y, 220, 80, 'styleRuleStyle');
@@ -181,7 +181,13 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
-  // --- selector options for the panel ---
+  // --- selector / control options for the panel ---
+
+  readonly controlTypes: ControlType[] = CONTROL_TYPES;
+
+  controlLabel(c: ControlType): string {
+    return c === '' ? 'default' : c;
+  }
 
   get selectorOptions(): string[] {
     if (!this.selectedRule) {
@@ -232,7 +238,11 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
 
   private labelFor(rule: StyleRuleData): string {
     const sel = (rule.selectorKind === 'id' ? '#' : '.') + (rule.selector || '?');
-    return `${sel} {\nbackground: ${rule.backgroundColor || '—'}\n}`;
+    const props = [`background: ${rule.backgroundColor || '—'}`];
+    if (rule.control) {
+      props.push(`control: ${rule.control}`);
+    }
+    return `${sel} {\n${props.join('\n')}\n}`;
   }
 
   /** Reflects the chosen background colour on the node for a live preview. */
@@ -260,6 +270,9 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
       lines.push(`  <style ${sel}>`);
       if (rule.backgroundColor) {
         lines.push(`    <property name="backgroundColor" value="${this.esc(rule.backgroundColor)}"/>`);
+      }
+      if (rule.control) {
+        lines.push(`    <property name="control" value="${this.esc(rule.control)}"/>`);
       }
       lines.push('  </style>');
     }

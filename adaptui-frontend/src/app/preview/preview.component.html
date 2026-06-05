@@ -25,11 +25,18 @@
 
   <!-- Rendered adaptive UI -->
   <section class="preview-stage">
-    <div class="stage-inner" *ngIf="hasModel; else noModel">
-      <ng-container *ngFor="let root of renderRoots">
-        <ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: root }"></ng-container>
-      </ng-container>
-    </div>
+    <ng-container *ngIf="hasModel; else noModel">
+      <div class="view-bar" *ngIf="views.length">
+        <button
+          *ngFor="let v of views"
+          class="view-tab"
+          [class.active]="v.id === activeViewId"
+          (click)="setActiveView(v.id)">{{ v.name }}</button>
+      </div>
+      <div class="stage-inner" *ngIf="activeView as av">
+        <ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: av }"></ng-container>
+      </div>
+    </ng-container>
     <ng-template #noModel>
       <div class="placeholder">Build an IFML model in the <b>IFML</b> tab to preview it here.</div>
     </ng-template>
@@ -45,13 +52,23 @@
     [class.rt-component]="node.type === 'ViewComponent'"
     [class.rt-event]="node.type === 'Event'"
     [style.background]="node.backgroundColor || null"
-    [style.font-size.px]="node.fontSize">
-    <div class="rt-head">
-      <span class="rt-name">{{ node.name }}</span>
-      <span class="rt-type">{{ node.type }}</span>
-      <span class="rt-badge" *ngIf="node.created">new</span>
-    </div>
-    <div class="rt-flow" *ngIf="node.flowsTo.length">→ {{ node.flowsTo.join(', ') }}</div>
+    [style.font-size.px]="node.fontSize"
+    [ngSwitch]="controlFor(node)">
+
+    <!-- Concrete controls (events → button / checkbox / input / link …) -->
+    <button *ngSwitchCase="'button'" class="ctrl-button" (click)="onTrigger(node)">{{ node.name }}</button>
+    <label *ngSwitchCase="'checkbox'" class="ctrl-checkbox"><input type="checkbox" (change)="onTrigger(node)"> {{ node.name }}</label>
+    <input *ngSwitchCase="'inputField'" class="ctrl-input" [placeholder]="node.name" (change)="onTrigger(node)">
+    <a *ngSwitchCase="'link'" class="ctrl-link" href="javascript:void(0)" (click)="onTrigger(node)">{{ node.name }}</a>
+    <ng-container *ngSwitchDefault>
+      <div class="rt-head">
+        <span class="rt-name">{{ node.name }}</span>
+        <span class="rt-type">{{ node.type }}</span>
+        <span class="rt-badge" *ngIf="node.created">new</span>
+      </div>
+    </ng-container>
+
+    <div class="rt-flow" *ngIf="node.flows.length">→ {{ flowLabel(node) }}</div>
     <div class="rt-children" *ngIf="node.children.length">
       <ng-container *ngFor="let c of node.children">
         <ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: c }"></ng-container>

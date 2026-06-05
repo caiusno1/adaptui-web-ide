@@ -25,7 +25,19 @@
     <!-- Configuration of the selected node -->
     <div class="config-panel" *ngIf="selectedData as data">
       <h4 *ngIf="data.kind === 'condition'">Condition</h4>
+      <h4 *ngIf="data.kind === 'gate'">Logic gate</h4>
       <h4 *ngIf="data.kind === 'operation'">Operation</h4>
+
+      <!-- Gate -->
+      <ng-container *ngIf="data.kind === 'gate' && data.gate as g">
+        <label class="field">
+          <span>Combine inputs with</span>
+          <select [(ngModel)]="g.op" (ngModelChange)="onGateChange()">
+            <option value="and">AND — all must hold</option>
+            <option value="or">OR — any may hold</option>
+          </select>
+        </label>
+      </ng-container>
 
       <!-- Condition -->
       <ng-container *ngIf="data.kind === 'condition' && data.condition as c">

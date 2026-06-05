@@ -10,7 +10,7 @@
  * is what the Preview renders.
  */
 
-import { AdaptmlRule, ConditionConfig, ContextProperty, IfmlElementRef } from '../model/adaptation.model';
+import { AdaptmlRule, BoolExpr, ConditionConfig, ContextProperty, IfmlElementRef } from '../model/adaptation.model';
 import {
   HostGraph, IfmlFlow, OperationModel, PatternNodeData, RuntimeEdge, RuntimeNode, StyleRuleData,
 } from '../model/transformation.model';
@@ -35,7 +35,8 @@ export function buildHostGraph(elements: IfmlElementRef[], flows: IfmlFlow[], st
     className: el.className,
     visible: true,
     fontSize: DEFAULT_FONT_SIZE,
-    backgroundColor: resolveBackground(el, styles),
+    backgroundColor: resolveStyle(el, styles, 'background'),
+    control: resolveStyle(el, styles, 'control'),
   }));
 
   const ids = new Set(nodes.map((n) => n.id));
@@ -53,14 +54,15 @@ export function buildHostGraph(elements: IfmlElementRef[], flows: IfmlFlow[], st
   return { nodes, edges };
 }
 
-/** Resolves the baseline background colour for an element (id selector wins over class). */
-function resolveBackground(el: IfmlElementRef, styles: StyleRuleData[]): string {
-  const byId = styles.find((s) => s.selectorKind === 'id' && s.selector === el.name && s.backgroundColor);
+/** Resolves a concrete style property for an element (id selector wins over class). */
+function resolveStyle(el: IfmlElementRef, styles: StyleRuleData[], prop: 'background' | 'control'): string {
+  const value = (s: StyleRuleData) => (prop === 'background' ? s.backgroundColor : s.control);
+  const byId = styles.find((s) => s.selectorKind === 'id' && s.selector === el.name && value(s));
   if (byId) {
-    return byId.backgroundColor;
+    return value(byId);
   }
-  const byClass = styles.find((s) => s.selectorKind === 'class' && s.selector === el.className && s.backgroundColor);
-  return byClass ? byClass.backgroundColor : '';
+  const byClass = styles.find((s) => s.selectorKind === 'class' && s.selector === el.className && value(s));
+  return byClass ? value(byClass) : '';
 }
 
 // ---------------------------------------------------------------------------
@@ -95,8 +97,19 @@ export function evaluateCondition(c: ConditionConfig, ctx: Map<string, ContextPr
   }
 }
 
+/** Evaluates a boolean expression of conditions combined by AND/OR gates. */
+export function evalExpr(expr: BoolExpr, ctx: Map<string, ContextProperty>): boolean {
+  if (expr.type === 'condition') {
+    return evaluateCondition(expr.condition, ctx);
+  }
+  return expr.op === 'and'
+    ? expr.children.every((c) => evalExpr(c, ctx))
+    : expr.children.some((c) => evalExpr(c, ctx));
+}
+
+/** An operation fires only when it has a condition expression and it evaluates true. */
 export function ruleFires(rule: AdaptmlRule, ctx: Map<string, ContextProperty>): boolean {
-  return !!rule.operationName && rule.conditions.every((c) => evaluateCondition(c, ctx));
+  return !!rule.operationName && rule.expr != null && evalExpr(rule.expr, ctx);
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +235,7 @@ export function applyMatch(op: OperationModel, match: Map<string, string>, host:
         visible: true,
         fontSize: DEFAULT_FONT_SIZE,
         backgroundColor: '',
+        control: '',
         created: true,
       };
       applyAssignments(node, pn.data);
@@ -314,34 +328,55 @@ export function runAdaptation(base: HostGraph, rules: AdaptmlRule[], ops: Operat
 // Render tree (visible nodes, nested by containment)
 // ---------------------------------------------------------------------------
 
-export interface RenderNode extends RuntimeNode {
-  children: RenderNode[];
-  flowsTo: string[];
+/** A navigation target of an event: the target element and the view it lives in. */
+export interface NavTarget {
+  targetId: string;
+  targetName: string;
+  /** Top-level container (view) the target belongs to — where navigation reroutes. */
+  targetViewId: string;
 }
 
-/** Turns the (rewritten) host graph into a tree of visible nodes for rendering. */
+export interface RenderNode extends RuntimeNode {
+  children: RenderNode[];
+  flows: NavTarget[];
+}
+
+/**
+ * Turns the (rewritten) host graph into a forest of visible nodes nested by
+ * containment. Each root is a "view"; each node carries its navigation flows
+ * (with the target's view) so the Preview can reroute when an event fires.
+ */
 export function buildRenderTree(host: HostGraph): RenderNode[] {
   const map = new Map<string, RenderNode>();
   for (const n of host.nodes) {
-    map.set(n.id, { ...n, children: [], flowsTo: [] });
+    map.set(n.id, { ...n, children: [], flows: [] });
   }
-  const hasParent = new Set<string>();
+  const parentOf = new Map<string, string>();
   for (const e of host.edges) {
     if (e.relation === 'contains') {
       const p = map.get(e.source);
       const c = map.get(e.target);
       if (p && c) {
         p.children.push(c);
-        hasParent.add(c.id);
+        parentOf.set(c.id, p.id);
       }
     }
   }
+  const viewOf = (id: string): string => {
+    let cur = id;
+    const seen = new Set<string>();
+    while (parentOf.has(cur) && !seen.has(cur)) {
+      seen.add(cur);
+      cur = parentOf.get(cur) as string;
+    }
+    return cur;
+  };
   for (const e of host.edges) {
     if (e.relation === 'navigatesTo') {
       const s = map.get(e.source);
       const t = map.get(e.target);
       if (s && t) {
-        s.flowsTo.push(t.name);
+        s.flows.push({ targetId: t.id, targetName: t.name, targetViewId: viewOf(t.id) });
       }
     }
   }
@@ -351,7 +386,7 @@ export function buildRenderTree(host: HostGraph): RenderNode[] {
   };
   const roots: RenderNode[] = [];
   for (const n of map.values()) {
-    if (!hasParent.has(n.id)) {
+    if (!parentOf.has(n.id)) {
       roots.push(n);
     }
   }

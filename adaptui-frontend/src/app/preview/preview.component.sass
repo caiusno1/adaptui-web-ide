@@ -71,14 +71,61 @@
 .preview-stage
   flex: 1 1 auto
   overflow: auto
-  padding: 24px
+  padding: 16px 24px 24px
   background: #eceff1
+
+.view-bar
+  display: flex
+  flex-wrap: wrap
+  gap: 6px
+  margin-bottom: 16px
+
+.view-tab
+  padding: 6px 14px
+  font-size: 13px
+  color: #37474f
+  background: #fff
+  border: 1px solid #cfd8dc
+  border-radius: 16px
+  cursor: pointer
+
+.view-tab.active
+  color: #fff
+  background: #3949ab
+  border-color: #3949ab
 
 .stage-inner
   display: flex
   flex-wrap: wrap
   gap: 16px
   align-items: flex-start
+
+.ctrl-button
+  padding: 6px 14px
+  font-size: 13px
+  color: #fff
+  background: #3949ab
+  border: none
+  border-radius: 6px
+  cursor: pointer
+
+.ctrl-link
+  color: #3949ab
+  cursor: pointer
+  text-decoration: underline
+
+.ctrl-checkbox
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  font-size: 13px
+  cursor: pointer
+
+.ctrl-input
+  padding: 6px 8px
+  font-size: 13px
+  border: 1px solid #cfd8dc
+  border-radius: 5px
 
 .placeholder
   color: #90a4ae

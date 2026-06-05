@@ -107,17 +107,35 @@ export interface OperationConfig {
   operationName: string;
 }
 
-export type AdaptNodeKind = 'condition' | 'operation';
+export type AdaptNodeKind = 'condition' | 'operation' | 'gate';
+export type GateOp = 'and' | 'or';
+
+export interface GateConfig {
+  op: GateOp;
+}
 
 /** Per-node configuration stored alongside an ADAPTML graph cell. */
 export interface AdaptNodeData {
   kind: AdaptNodeKind;
   condition?: ConditionConfig;
   operation?: OperationConfig;
+  gate?: GateConfig;
 }
 
-/** A flattened adaptation rule published for the Preview: conditions (AND) + the operation to run. */
+/**
+ * A boolean expression over conditions, combined by AND/OR gates. Built from the
+ * ADAPTML graph and evaluated by the Preview to decide whether an operation fires.
+ */
+export type BoolExpr =
+  | { type: 'condition'; condition: ConditionConfig }
+  | { type: 'gate'; op: GateOp; children: BoolExpr[] };
+
+/**
+ * An adaptation rule published for the Preview: the boolean condition expression
+ * guarding the operation. `expr` is null when the operation has no conditions, in
+ * which case it never fires.
+ */
 export interface AdaptmlRule {
-  conditions: ConditionConfig[];
+  expr: BoolExpr | null;
   operationName: string;
 }

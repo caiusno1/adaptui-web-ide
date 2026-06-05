@@ -42,6 +42,12 @@
           <input type="text" class="color-text" [(ngModel)]="r.backgroundColor" (ngModelChange)="onRuleChange()">
         </span>
       </label>
+      <label class="field">
+        <span>Control (e.g. for events)</span>
+        <select [(ngModel)]="r.control" (ngModelChange)="onRuleChange()">
+          <option *ngFor="let c of controlTypes" [value]="c">{{ controlLabel(c) }}</option>
+        </select>
+      </label>
     </div>
   </aside>
 

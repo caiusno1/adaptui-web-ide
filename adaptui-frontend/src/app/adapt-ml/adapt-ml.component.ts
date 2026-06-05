@@ -3,8 +3,8 @@ import { NgZone } from '@angular/core';
 import { Subscription } from 'rxjs';
 
 import {
-  AdaptmlRule, AdaptNodeData, ConditionConfig, ContextProperty, ENUM_OPERATORS, NUMBER_OPERATORS,
-  OPERATOR_XML, OperationConfig,
+  AdaptmlRule, AdaptNodeData, BoolExpr, ConditionConfig, ContextProperty, ENUM_OPERATORS, GateOp,
+  NUMBER_OPERATORS, OPERATOR_XML, OperationConfig,
 } from '../model/adaptation.model';
 import { AdaptmlModelService } from '../services/adaptml-model.service';
 import { ContextModelService } from '../services/context-model.service';
@@ -22,7 +22,9 @@ declare var mxKeyHandler: any;
 declare var mxEdgeStyle: any;
 
 interface AdaptPaletteItem {
-  kind: 'condition' | 'operation';
+  kind: 'condition' | 'operation' | 'gate';
+  /** For gate items: the boolean operator. */
+  op?: GateOp;
   label: string;
   icon: string;
   width: number;
@@ -52,6 +54,8 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
 
   paletteItems: AdaptPaletteItem[] = [
     { kind: 'condition', label: 'Condition', icon: 'rule', width: 180, height: 90, style: 'conditionStyle' },
+    { kind: 'gate', op: 'and', label: 'AND gate', icon: 'join_inner', width: 90, height: 50, style: 'gateStyle' },
+    { kind: 'gate', op: 'or', label: 'OR gate', icon: 'join_full', width: 90, height: 50, style: 'gateStyle' },
     { kind: 'operation', label: 'Operation', icon: 'bolt', width: 210, height: 72, style: 'operationStyle' },
   ];
 
@@ -132,10 +136,16 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     keyHandler.bindKey(46, () => this.deleteSelected());
     keyHandler.bindKey(8, () => this.deleteSelected());
 
-    // A flow goes from a condition to an operation; nothing else is valid.
+    // Flows go condition/gate -> gate/operation (logic flows into the operation).
     const self = this;
-    graph.isValidSource = (cell: any) => cell != null && self.kindOf(cell) === 'condition';
-    graph.isValidTarget = (cell: any) => cell != null && self.kindOf(cell) === 'operation';
+    graph.isValidSource = (cell: any) => {
+      const k = self.kindOf(cell);
+      return cell != null && (k === 'condition' || k === 'gate');
+    };
+    graph.isValidTarget = (cell: any) => {
+      const k = self.kindOf(cell);
+      return cell != null && (k === 'gate' || k === 'operation');
+    };
 
     // Keep the config panel in sync with the canvas selection.
     graph.getSelectionModel().addListener(mxEvent.CHANGE, () => {
@@ -169,8 +179,18 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     operationStyle[mxConstants.STYLE_FONTSIZE] = 12;
     operationStyle[mxConstants.STYLE_WHITE_SPACE] = 'wrap';
 
+    const gateStyle: any = {};
+    gateStyle[mxConstants.STYLE_SHAPE] = mxConstants.SHAPE_HEXAGON;
+    gateStyle[mxConstants.STYLE_FILLCOLOR] = '#fff3e0';
+    gateStyle[mxConstants.STYLE_STROKECOLOR] = '#ef6c00';
+    gateStyle[mxConstants.STYLE_FONTCOLOR] = '#e65100';
+    gateStyle[mxConstants.STYLE_STROKEWIDTH] = 1.5;
+    gateStyle[mxConstants.STYLE_FONTSIZE] = 12;
+    gateStyle[mxConstants.STYLE_FONTSTYLE] = mxConstants.FONT_BOLD;
+
     stylesheet.putCellStyle('conditionStyle', conditionStyle);
     stylesheet.putCellStyle('operationStyle', operationStyle);
+    stylesheet.putCellStyle('gateStyle', gateStyle);
 
     const edge = stylesheet.getDefaultEdgeStyle();
     edge[mxConstants.STYLE_EDGE] = mxEdgeStyle.OrthConnector;
@@ -209,9 +229,14 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   private insertNode(item: AdaptPaletteItem, x: number, y: number): void {
     const graph = this.graph;
     const model = graph.getModel();
-    const data: AdaptNodeData = item.kind === 'condition'
-      ? { kind: 'condition', condition: this.defaultCondition() }
-      : { kind: 'operation', operation: this.defaultOperation() };
+    let data: AdaptNodeData;
+    if (item.kind === 'condition') {
+      data = { kind: 'condition', condition: this.defaultCondition() };
+    } else if (item.kind === 'gate') {
+      data = { kind: 'gate', gate: { op: item.op ?? 'and' } };
+    } else {
+      data = { kind: 'operation', operation: this.defaultOperation() };
+    }
 
     model.beginUpdate();
     try {
@@ -373,14 +398,22 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     if (data.kind === 'operation' && data.operation) {
       return `apply: ${data.operation.operationName || '?'}`;
     }
+    if (data.kind === 'gate' && data.gate) {
+      return `«${data.gate.op.toUpperCase()}»`;
+    }
     return data.kind;
+  }
+
+  /** Switches the selected gate between AND and OR (panel). */
+  onGateChange(): void {
+    this.refreshSelectedLabel();
   }
 
   // --------------------------------------------------------------------------
   // ADAPTML XML export
   // --------------------------------------------------------------------------
 
-  /** Collects the adaptation rules (conditions + referenced operation) from the canvas. */
+  /** Collects the adaptation rules (condition expression + operation) from the canvas. */
   private gatherRules(): AdaptmlRule[] {
     if (!this.graph) {
       return [];
@@ -396,23 +429,65 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
       if (!opData?.operation) {
         continue;
       }
-      const incoming: any[] = this.graph.getIncomingEdges(cell) || [];
-      const conditions: ConditionConfig[] = [];
-      for (const edge of incoming) {
-        const src = model.getTerminal(edge, true);
-        const sd = src ? this.nodeData.get(src.id) : null;
-        if (sd?.kind === 'condition' && sd.condition && sd.condition.propertyKey) {
-          conditions.push(sd.condition);
-        }
-      }
-      rules.push({ conditions, operationName: opData.operation.operationName });
+      const expr = this.buildExpr(cell, 'and', new Set<string>());
+      rules.push({ expr, operationName: opData.operation.operationName });
     }
     return rules;
+  }
+
+  /**
+   * Builds the boolean expression feeding a target node (operation or gate) from
+   * its incoming condition/gate nodes. Multiple inputs to an operation are AND-ed.
+   */
+  private buildExpr(cell: any, op: GateOp, visited: Set<string>): BoolExpr | null {
+    if (visited.has(cell.id)) {
+      return null; // guard against cycles
+    }
+    visited.add(cell.id);
+    const model = this.graph.getModel();
+    const incoming: any[] = this.graph.getIncomingEdges(cell) || [];
+    const children: BoolExpr[] = [];
+    for (const edge of incoming) {
+      const src = model.getTerminal(edge, true);
+      const sd = src ? this.nodeData.get(src.id) : null;
+      if (!sd) {
+        continue;
+      }
+      if (sd.kind === 'condition' && sd.condition && sd.condition.propertyKey) {
+        children.push({ type: 'condition', condition: sd.condition });
+      } else if (sd.kind === 'gate' && sd.gate) {
+        const sub = this.buildExpr(src, sd.gate.op, visited);
+        if (sub) {
+          children.push(sub);
+        }
+      }
+    }
+    visited.delete(cell.id);
+    if (children.length === 0) {
+      return null;
+    }
+    if (children.length === 1) {
+      return children[0];
+    }
+    return { type: 'gate', op, children };
   }
 
   /** Publishes the rules so the Preview can evaluate and apply them. */
   private publishRules(): void {
     this.adaptmlService.setRules(this.gatherRules());
+  }
+
+  private exprToXml(expr: BoolExpr, indent: string): string[] {
+    if (expr.type === 'condition') {
+      const c = expr.condition;
+      return [`${indent}<condition property="${this.esc(c.propertyKey)}" operator="${OPERATOR_XML[c.operator] || this.esc(c.operator)}" value="${this.esc(c.value)}"/>`];
+    }
+    const lines = [`${indent}<${expr.op}>`];
+    for (const ch of expr.children) {
+      lines.push(...this.exprToXml(ch, indent + '  '));
+    }
+    lines.push(`${indent}</${expr.op}>`);
+    return lines;
   }
 
   private buildAdaptmlXml(): string {
@@ -423,8 +498,8 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     rules.forEach((rule, idx) => {
       lines.push(`  <adaptationRule id="rule_${idx + 1}">`);
       lines.push('    <when>');
-      for (const c of rule.conditions) {
-        lines.push(`      <condition property="${this.esc(c.propertyKey)}" operator="${OPERATOR_XML[c.operator] || this.esc(c.operator)}" value="${this.esc(c.value)}"/>`);
+      if (rule.expr) {
+        lines.push(...this.exprToXml(rule.expr, '      '));
       }
       lines.push('    </when>');
       lines.push('    <then>');
