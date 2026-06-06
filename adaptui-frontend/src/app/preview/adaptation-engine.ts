@@ -12,7 +12,7 @@
 
 import { AdaptmlRule, BoolExpr, ConditionConfig, ContextProperty, IfmlElementRef } from '../model/adaptation.model';
 import {
-  DEDICATED_STYLE_KEYS, HostGraph, IfmlFlow, OperationModel, PatternNodeData, RuntimeEdge, RuntimeNode,
+  HostGraph, IfmlFlow, OperationModel, PatternNodeData, RuntimeEdge, RuntimeNode,
   STYLE_PROPERTIES, StyleRuleData,
 } from '../model/transformation.model';
 
@@ -30,21 +30,21 @@ function genId(prefix: string): string {
 export function buildHostGraph(elements: IfmlElementRef[], flows: IfmlFlow[], styles: StyleRuleData[]): HostGraph {
   const nodes: RuntimeNode[] = elements.map((el) => {
     const { props, control } = resolveStyle(el, styles);
-    const size = Number(props['fontSize']);
-    const { self, children } = cssFromStyleProps(props);
-    return {
+    const node: RuntimeNode = {
       id: el.cellId,
       sourceId: el.cellId,
       name: el.name,
       type: el.type,
       className: el.className,
       visible: true,
-      fontSize: props['fontSize'] && Number.isFinite(size) ? size : DEFAULT_FONT_SIZE,
-      backgroundColor: props['backgroundColor'] || '',
+      fontSize: DEFAULT_FONT_SIZE,
+      backgroundColor: '',
       control,
-      styles: self,
-      childStyles: children,
+      styles: {},
+      childStyles: {},
     };
+    applyStyleProps(node, props);
+    return node;
   });
 
   const ids = new Set(nodes.map((n) => n.id));
@@ -87,27 +87,32 @@ function resolveStyle(el: IfmlElementRef, styles: StyleRuleData[]): { props: Rec
 }
 
 /**
- * Maps resolved style props to two CSS maps (units applied), excluding bg/fontSize:
- * `self` for the element's own box and `children` for its children container
- * (where flex/grid layout properties live).
+ * Merges catalog-keyed style props onto a runtime node: `backgroundColor` and
+ * `fontSize` are dedicated (operation-mutable) fields, flex/grid layout props go
+ * to the children container (`childStyles`), everything else to the own-box
+ * `styles` map (units applied). Used for both base styling and operation RHS.
  */
-function cssFromStyleProps(props: Record<string, string>): { self: Record<string, string>; children: Record<string, string> } {
-  const self: Record<string, string> = {};
-  const children: Record<string, string> = {};
+function applyStyleProps(node: RuntimeNode, props: Record<string, string>): void {
   for (const def of STYLE_PROPERTIES) {
-    if (DEDICATED_STYLE_KEYS.indexOf(def.key) >= 0) {
+    const v = props[def.key];
+    if (v === undefined || v === '') {
       continue;
     }
-    const v = props[def.key];
-    if (v !== undefined && v !== '') {
-      (def.target === 'children' ? children : self)[def.css] = v + (def.unit || '');
+    if (def.key === 'backgroundColor') {
+      node.backgroundColor = v;
+    } else if (def.key === 'fontSize') {
+      const n = Number(v);
+      if (Number.isFinite(n)) {
+        node.fontSize = n;
+      }
+    } else {
+      (def.target === 'children' ? node.childStyles : node.styles)[def.css] = v + (def.unit || '');
     }
   }
   // A border only shows if a style is set — default to solid when width/colour are given.
-  if ((self['border-width'] || self['border-color']) && !self['border-style']) {
-    self['border-style'] = 'solid';
+  if ((node.styles['border-width'] || node.styles['border-color']) && !node.styles['border-style']) {
+    node.styles['border-style'] = 'solid';
   }
-  return { self, children };
 }
 
 // ---------------------------------------------------------------------------
@@ -236,14 +241,8 @@ function applyAssignments(node: RuntimeNode, d: PatternNodeData): void {
   } else if (d.setVisible === 'false') {
     node.visible = false;
   }
-  if (d.setFontSize) {
-    const n = Number(d.setFontSize);
-    if (!Number.isNaN(n)) {
-      node.fontSize = n;
-    }
-  }
-  if (d.setBackgroundColor) {
-    node.backgroundColor = d.setBackgroundColor;
+  if (d.setProps) {
+    applyStyleProps(node, d.setProps);
   }
 }
 

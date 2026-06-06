@@ -149,9 +149,6 @@ export const STYLE_PROPERTIES: StylePropDef[] = [
   { key: 'gap', label: 'Gap', css: 'gap', input: 'number', unit: 'px', placeholder: '12', group: 'Layout (children)', target: 'children' },
 ];
 
-/** Style property keys mirrored onto dedicated RuntimeNode fields (operation-mutable). */
-export const DEDICATED_STYLE_KEYS = ['backgroundColor', 'fontSize'];
-
 /** A single style rule: a selector and the concrete properties it assigns. */
 export interface StyleRuleData {
   /** Whether the rule targets one element (`id`) or every element of a class. */
@@ -189,10 +186,12 @@ export interface PatternNodeData {
   selector: string;
   /** RHS assignment for element visibility ('' = leave unchanged). */
   setVisible: '' | 'true' | 'false';
-  /** RHS assignment for element font size ('' = leave unchanged). */
-  setFontSize: string;
-  /** RHS assignment for style background colour ('' = leave unchanged). */
-  setBackgroundColor: string;
+  /**
+   * RHS style-property assignments applied to the matched element, keyed by
+   * `StylePropDef.key` (same catalog as the Style DSL). Empty value = unchanged.
+   * Lets operations change any element property, e.g. dark-mode colours.
+   */
+  setProps: Record<string, string>;
 }
 
 /** A pattern edge between two pattern nodes. */

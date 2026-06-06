@@ -65,6 +65,7 @@ export interface ContextProperty {
 }
 
 export const DEFAULT_CONTEXT_PROPERTIES: ContextProperty[] = [
+  { key: 'time', label: 'Time (hour 0–23)', type: 'number', activated: true, value: '14' },
   { key: 'age', label: 'Age', type: 'number', activated: false, value: '30' },
   { key: 'environment', label: 'Environment', type: 'enum', values: ['home', 'work', 'outdoor', 'transit'], activated: false, value: 'home' },
   { key: 'deviceType', label: 'Device Type', type: 'enum', values: ['phone', 'tablet', 'desktop'], activated: false, value: 'phone' },

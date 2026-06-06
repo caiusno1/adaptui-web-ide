@@ -53,8 +53,8 @@ The tabs are connected through shared Angular services so they stay consistent:
 - **IFML elements** (`IfmlModelService`) — the IFML editor publishes its elements
   (name/id, type, adaptation class) so the other editors can target real elements.
 - **Context properties** (`ContextModelService`) — CONTEXTML *activates* the
-  properties to adapt to (`Age`, `Environment`, `Device Type`, `Gender`), each typed
-  `number` or `enum`.
+  properties to adapt to (`Time`, `Age`, `Environment`, `Device Type`, `Gender`), each
+  typed `number` or `enum`; properties can be deleted in the tab.
 - **Operations** (`OperationModelService`) — the Operations editor publishes the
   operations it defines (names for ADAPTML; full LHS/RHS models for the Preview).
 - **Style rules** (`StyleModelService`) and **ADAPTML rules** (`AdaptmlModelService`)
@@ -342,22 +342,30 @@ selected one as a single **LHS → RHS** rule:
    sub-pattern of the IFML/Style model.
 2. For each node/edge pick a **role** — **«preserve»** (matched and kept),
    **«create»** (added on the RHS) or **«delete»** (removed). Roles are colour-coded.
-3. On preserve/create nodes, set the properties to apply on the RHS — *Visibility* /
-   *Font size* for element nodes, *Background colour* for style nodes.
+3. On preserve/create nodes, set what to apply on the RHS — *Visibility* plus **any
+   style property** from the same catalog as the Style DSL (colours, gradients,
+   borders, typography, layout, …). So an operation can change *any* element
+   property, e.g. recolour surfaces and text for a dark theme.
+
+A single pattern node matching by type/class applies to **every** matching element
+(e.g. `match: ViewContainer` recolours all containers), since the engine applies all
+matches of the rule.
 
 **Export Operations XML** (`model.operations`) derives an explicit `<lhs>`/`<rhs>`
-from the roles:
+from the roles, with one `<set>` per assigned property:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <op:OperationModel xmlns:op="http://adaptui.org/operations/1.0" name="AdaptUI Operations">
-  <operation name="hideViews">
+  <operation name="Dark surfaces">
     <lhs>
-      <node id="n1" kind="element" match="ViewComponent" selector="class:View"/>
+      <node id="n1" kind="element" match="ViewContainer"/>
     </lhs>
     <rhs>
-      <node id="n1" kind="element" match="ViewComponent" selector="class:View">
-        <set property="visible" value="false"/>
+      <node id="n1" kind="element" match="ViewContainer">
+        <set property="backgroundColor" value="#0f172a"/>
+        <set property="backgroundImage" value="none"/>
+        <set property="borderColor" value="#1e293b"/>
       </node>
     </rhs>
   </operation>
@@ -425,8 +433,8 @@ runtime**:
    number field or an enum dropdown) and the preview **re-adapts instantly**.
 4. For every ADAPTML rule whose boolean condition expression holds, the referenced
    operation's graph transformation is applied to a runtime copy of the IFML graph
-   (modifying `visible` / `fontSize` / `backgroundColor`, creating/deleting
-   nodes/edges). The status line shows how many rules are currently applied.
+   (changing visibility or any style property, creating/deleting nodes/edges). The
+   status line shows how many rules are currently applied.
 
 The matching-and-rewriting logic lives in a small, dependency-free module,
 [`adaptation-engine.ts`](adaptui-frontend/src/app/preview/adaptation-engine.ts).
@@ -445,6 +453,12 @@ standard IFML constructs only and concretized by the Style tab:
 
 It exercises the whole stack end to end: IFML structure + navigation, the Style DSL's
 flex/grid layout, gradients, cards and controls, and the Preview's page-style routing.
+
+It also ships a **dark-mode adaptation**: an ADAPTML rule fires when the `Time` context
+is **≥ 20** (8 pm), running two operations — *Dark surfaces* (every `ViewContainer` →
+dark background, gradient cleared) and *Dark text* (every `ViewComponent` → light
+text) — so the whole app switches to a dark theme. Set the *Time* value in the
+Preview's Context side menu past 20 to see it flip live (and back).
 
 ---
 

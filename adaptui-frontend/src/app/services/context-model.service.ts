@@ -34,6 +34,11 @@ export class ContextModelService {
     );
   }
 
+  /** Removes a context property (CONTEXTML deletion). */
+  remove(key: string): void {
+    this._properties.next(this._properties.value.filter((p) => p.key !== key));
+  }
+
   /** Updates the current runtime value of a context property (Preview side menu). */
   setValue(key: string, value: string): void {
     this._properties.next(

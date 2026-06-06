@@ -4,7 +4,7 @@ import { Subscription } from 'rxjs';
 import { AdaptationClass, IfmlElementRef } from '../model/adaptation.model';
 import {
   ElementMatch, OperationModel, OpEdge, OpNode, PatternEdgeData, PatternNodeData,
-  PatternNodeKind, PatternRole, PatternSelectorKind, RELATION_KINDS,
+  PatternNodeKind, PatternRole, PatternSelectorKind, RELATION_KINDS, STYLE_PROPERTIES, StylePropDef,
 } from '../model/transformation.model';
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
@@ -153,10 +153,30 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
-    // Start with one empty operation so the canvas is ready to use. Deferred to
-    // the next macrotask so it does not mutate bound state during the change
-    // detection pass that follows ngAfterViewInit (avoids NG0100).
-    setTimeout(() => this.addOperation());
+    // Seed the dark-mode example operations. Deferred to the next macrotask so it
+    // does not mutate bound state during the change detection pass that follows
+    // ngAfterViewInit (avoids NG0100).
+    setTimeout(() => this.seedOperations());
+  }
+
+  /**
+   * Seeds the dark-mode adaptation: two operations that recolour the matched
+   * elements when applied — darkening container surfaces and lightening text.
+   */
+  private seedOperations(): void {
+    const node = (data: PatternNodeData): OpNode => ({ id: 'n1', x: 60, y: 60, w: 240, h: 96, data });
+    const surfaces: PatternNodeData = {
+      kind: 'element', role: 'preserve', match: 'ViewContainer', selectorKind: 'none', selector: '',
+      setVisible: '', setProps: { backgroundColor: '#0f172a', backgroundImage: 'none', borderColor: '#1e293b' },
+    };
+    const text: PatternNodeData = {
+      kind: 'element', role: 'preserve', match: 'ViewComponent', selectorKind: 'none', selector: '',
+      setVisible: '', setProps: { color: '#e2e8f0', backgroundColor: '#0f172a' },
+    };
+    this.operations.push({ id: `op_${++this.opCounter}`, name: 'Dark surfaces', nodes: [node(surfaces)], edges: [] });
+    this.operations.push({ id: `op_${++this.opCounter}`, name: 'Dark text', nodes: [node(text)], edges: [] });
+    this.loadOperation(this.operations[0].id);
+    this.publishModels();
   }
 
   // --------------------------------------------------------------------------
@@ -339,6 +359,20 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  /** Clears every pattern node/edge of the current operation. */
+  clearGraph(): void {
+    if (!this.graph || !confirm('Remove every pattern node from this operation?')) {
+      return;
+    }
+    const graph = this.graph;
+    graph.getModel().beginUpdate();
+    try {
+      graph.removeCells(graph.getChildCells(graph.getDefaultParent(), true, true));
+    } finally {
+      graph.getModel().endUpdate();
+    }
+  }
+
   // --------------------------------------------------------------------------
   // Configuration panel
   // --------------------------------------------------------------------------
@@ -351,9 +385,46 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
       selectorKind: 'none',
       selector: '',
       setVisible: '',
-      setFontSize: '',
-      setBackgroundColor: kind === 'style' ? '#ffeb3b' : '',
+      setProps: {},
     };
+  }
+
+  // --- style-property catalog for the RHS assignment panel ---
+
+  readonly styleProperties: StylePropDef[] = STYLE_PROPERTIES;
+  readonly styleGroups: string[] = STYLE_PROPERTIES.reduce<string[]>((groups, def) => {
+    if (groups.indexOf(def.group) < 0) {
+      groups.push(def.group);
+    }
+    return groups;
+  }, []);
+
+  propsInGroup(group: string): StylePropDef[] {
+    return this.styleProperties.filter((p) => p.group === group);
+  }
+
+  /** The raw RHS value of a property on the selected node ('' = unchanged). */
+  rawNodeProp(def: StylePropDef): string {
+    return this.selectedNode?.setProps[def.key] ?? '';
+  }
+
+  /** Colour-picker value — defaults to white when unset. */
+  propNodeValue(def: StylePropDef): string {
+    const v = this.rawNodeProp(def);
+    return v === '' && def.input === 'color' ? '#ffffff' : v;
+  }
+
+  /** Sets (or clears) an RHS style-property assignment on the selected node. */
+  setNodeProp(def: StylePropDef, value: string): void {
+    if (!this.selectedNode) {
+      return;
+    }
+    if (value === '' || value == null) {
+      delete this.selectedNode.setProps[def.key];
+    } else {
+      this.selectedNode.setProps[def.key] = value;
+    }
+    this.onNodeChange();
   }
 
   get selectorOptions(): string[] {
@@ -452,8 +523,8 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     const sets: string[] = [];
     if (data.role !== 'delete') {
       if (data.setVisible) { sets.push(`visible=${data.setVisible}`); }
-      if (data.setFontSize) { sets.push(`fontSize=${data.setFontSize}`); }
-      if (data.setBackgroundColor) { sets.push(`bg=${data.setBackgroundColor}`); }
+      const count = Object.keys(data.setProps || {}).filter((k) => data.setProps[k] !== '').length;
+      if (count) { sets.push(`${count} prop${count === 1 ? '' : 's'}`); }
     }
     const setStr = sets.length ? `\n${sets.join(', ')}` : '';
     return `«${data.role}» ${head}${sel}${setStr}`;
@@ -521,8 +592,12 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     const out: string[] = [];
     const d = node.data;
     if (d.setVisible) { out.push(`<set property="visible" value="${d.setVisible}"/>`); }
-    if (d.setFontSize) { out.push(`<set property="fontSize" value="${this.esc(d.setFontSize)}"/>`); }
-    if (d.setBackgroundColor) { out.push(`<set property="backgroundColor" value="${this.esc(d.setBackgroundColor)}"/>`); }
+    for (const def of STYLE_PROPERTIES) {
+      const v = d.setProps?.[def.key];
+      if (v !== undefined && v !== '') {
+        out.push(`<set property="${def.key}" value="${this.esc(v)}"/>`);
+      }
+    }
     return out;
   }
 

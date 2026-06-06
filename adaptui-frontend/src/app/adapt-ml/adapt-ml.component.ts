@@ -116,6 +116,36 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     this.configureGraph(graph);
     this.registerStyles(graph);
     this.registerDragSources(graph);
+
+    // Seed the dark-mode adaptation rule (deferred to avoid NG0100).
+    setTimeout(() => this.seedExample());
+  }
+
+  /** Seeds an adaptation rule: when the hour is >= 20, apply the dark-mode operations. */
+  private seedExample(): void {
+    const graph = this.graph;
+    if (!graph) {
+      return;
+    }
+    const model = graph.getModel();
+    const parent = graph.getDefaultParent();
+    const add = (data: AdaptNodeData, style: string, x: number, y: number, w: number, h: number) => {
+      const vertex = graph.insertVertex(parent, null, '', x, y, w, h, style);
+      this.nodeData.set(vertex.id, data);
+      model.setValue(vertex, this.labelFor(data));
+      return vertex;
+    };
+    model.beginUpdate();
+    try {
+      const cond = add({ kind: 'condition', condition: { propertyKey: 'time', operator: '>=', value: '20' } }, 'conditionStyle', 40, 90, 190, 90);
+      const op1 = add({ kind: 'operation', operation: { operationName: 'Dark surfaces' } }, 'operationStyle', 330, 40, 210, 72);
+      const op2 = add({ kind: 'operation', operation: { operationName: 'Dark text' } }, 'operationStyle', 330, 150, 210, 72);
+      graph.insertEdge(parent, null, '', cond, op1);
+      graph.insertEdge(parent, null, '', cond, op2);
+    } finally {
+      model.endUpdate();
+    }
+    this.publishRules();
   }
 
   // --------------------------------------------------------------------------
