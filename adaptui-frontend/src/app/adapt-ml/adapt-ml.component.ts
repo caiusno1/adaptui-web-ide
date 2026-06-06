@@ -1,12 +1,13 @@
 import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
 import { NgZone } from '@angular/core';
-import { Subscription } from 'rxjs';
+import { combineLatest, Subscription } from 'rxjs';
 
 import {
   AdaptmlRule, AdaptNodeData, BoolExpr, ConditionConfig, ContextProperty, ENUM_OPERATORS, GateOp,
   NUMBER_OPERATORS, OPERATOR_XML, OperationConfig,
 } from '../model/adaptation.model';
 import { AdaptmlModelService } from '../services/adaptml-model.service';
+import { CodeModelService } from '../services/code-model.service';
 import { ContextModelService } from '../services/context-model.service';
 import { OperationModelService } from '../services/operation-model.service';
 
@@ -79,6 +80,7 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     private contextService: ContextModelService,
     private operationService: OperationModelService,
     private adaptmlService: AdaptmlModelService,
+    private codeService: CodeModelService,
   ) { }
 
   ngOnInit(): void {
@@ -87,8 +89,11 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
         this.activatedContext = props.filter((p) => p.activated);
       })
     );
+    // Operations come from both the modelled (Operations tab) and code (Code tab) sources.
     this.subscriptions.add(
-      this.operationService.names$.subscribe((names) => { this.operationNames = names; })
+      combineLatest([this.operationService.names$, this.codeService.operationNames$]).subscribe(
+        ([modelled, code]) => { this.operationNames = [...modelled, ...code]; }
+      )
     );
   }
 
@@ -137,11 +142,17 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     };
     model.beginUpdate();
     try {
-      const cond = add({ kind: 'condition', condition: { propertyKey: 'time', operator: '>=', value: '20' } }, 'conditionStyle', 40, 90, 190, 90);
-      const op1 = add({ kind: 'operation', operation: { operationName: 'Dark surfaces' } }, 'operationStyle', 330, 40, 210, 72);
-      const op2 = add({ kind: 'operation', operation: { operationName: 'Dark text' } }, 'operationStyle', 330, 150, 210, 72);
-      graph.insertEdge(parent, null, '', cond, op1);
-      graph.insertEdge(parent, null, '', cond, op2);
+      // Daytime: a CODE operation (defined in the Code tab) stripes the post cards.
+      const condDay = add({ kind: 'condition', condition: { propertyKey: 'time', operator: '<', value: '20' } }, 'conditionStyle', 40, 40, 190, 90);
+      const zebra = add({ kind: 'operation', operation: { operationName: 'zebra' } }, 'operationStyle', 330, 50, 210, 72);
+      graph.insertEdge(parent, null, '', condDay, zebra);
+
+      // Evening: modelled (graph) operations switch the app to a dark theme.
+      const condNight = add({ kind: 'condition', condition: { propertyKey: 'time', operator: '>=', value: '20' } }, 'conditionStyle', 40, 200, 190, 90);
+      const op1 = add({ kind: 'operation', operation: { operationName: 'Dark surfaces' } }, 'operationStyle', 330, 170, 210, 72);
+      const op2 = add({ kind: 'operation', operation: { operationName: 'Dark text' } }, 'operationStyle', 330, 270, 210, 72);
+      graph.insertEdge(parent, null, '', condNight, op1);
+      graph.insertEdge(parent, null, '', condNight, op2);
     } finally {
       model.endUpdate();
     }

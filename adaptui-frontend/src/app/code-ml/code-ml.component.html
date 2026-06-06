@@ -1,0 +1,54 @@
+<div class="code-tab">
+
+  <aside class="code-side">
+    <h3 class="side-title">Code</h3>
+    <p class="side-hint">
+      Define operations as functions and refine IFML events with code. Both run live in
+      the <b>Preview</b>.
+    </p>
+
+    <div class="side-block">
+      <div class="side-label">Code operations</div>
+      <ul class="op-list">
+        <li *ngFor="let n of opNames"><mat-icon class="op-ic">functions</mat-icon> {{ n }}</li>
+        <li class="muted" *ngIf="!opNames.length">No functions defined yet.</li>
+      </ul>
+      <div class="hint-note">Reference these names in the <b>ADAPTML</b> tab like any operation.</div>
+    </div>
+
+    <div class="side-block">
+      <div class="side-label">IFML events</div>
+      <ul class="ev-list">
+        <li *ngFor="let e of events" [class.active]="e.name === selectedEventName" (click)="selectEvent(e.name)">
+          <span class="ev-name">{{ e.name }}</span>
+          <mat-icon class="ev-ic" *ngIf="hasEventCode(e.name)" matTooltip="Refined with code">code</mat-icon>
+        </li>
+        <li class="muted" *ngIf="!events.length">No events in the IFML model.</li>
+      </ul>
+    </div>
+  </aside>
+
+  <section class="code-main">
+    <div class="editor-block">
+      <div class="editor-head">
+        <span class="editor-title">Functions — each becomes an operation</span>
+        <span class="err" *ngIf="functionsError">⚠ {{ functionsError }}</span>
+        <span class="ok" *ngIf="!functionsError && opNames.length">✓ {{ opNames.join(', ') }}</span>
+      </div>
+      <textarea class="code-area" spellcheck="false" wrap="off"
+        [(ngModel)]="functionsSource" (ngModelChange)="onFunctionsChange()"></textarea>
+    </div>
+
+    <div class="editor-block">
+      <div class="editor-head">
+        <span class="editor-title">Refine event: <b>{{ selectedEventName || '—' }}</b></span>
+        <span class="muted">api.setContext(key, value) · api.byClass(…) · api.nodes · api.setBackground(node, …)</span>
+      </div>
+      <textarea class="code-area" spellcheck="false" wrap="off"
+        [disabled]="!selectedEventName"
+        [(ngModel)]="eventCodeText" (ngModelChange)="onEventCodeChange()"
+        placeholder="// Code that runs when this event is triggered in the Preview."></textarea>
+    </div>
+  </section>
+
+</div>

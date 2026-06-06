@@ -1,0 +1,72 @@
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Subscription } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
+
+import { IfmlElementRef } from '../model/adaptation.model';
+import { CodeModelService } from '../services/code-model.service';
+import { IfmlModelService } from '../services/ifml-model.service';
+
+/**
+ * The CODE tab. Here the user defines **operations as functions** (usable by name
+ * in ADAPTML, like the modelled operations) and **refines IFML events with code**
+ * (run when the event is triggered in the Preview).
+ */
+@Component({
+  selector: 'app-code',
+  templateUrl: './code-ml.component.html',
+  styleUrls: ['./code-ml.component.sass'],
+})
+export class CodeMlComponent implements OnInit, OnDestroy {
+
+  functionsSource = '';
+  functionsError = '';
+  opNames: string[] = [];
+
+  events: IfmlElementRef[] = [];
+  selectedEventName = '';
+  eventCodeText = '';
+  private eventCode: Record<string, string> = {};
+
+  private subs = new Subscription();
+
+  constructor(
+    private codeService: CodeModelService,
+    private ifmlService: IfmlModelService,
+  ) { }
+
+  ngOnInit(): void {
+    this.functionsSource = this.codeService.functionsSource;
+    this.subs.add(this.codeService.operationNames$.subscribe((n) => { this.opNames = n; }));
+    this.subs.add(this.codeService.functionsError$.subscribe((e) => { this.functionsError = e; }));
+    this.subs.add(this.codeService.eventCode$.subscribe((rec) => { this.eventCode = rec; }));
+    this.subs.add(this.ifmlService.elements$.pipe(debounceTime(0)).subscribe((els) => {
+      this.events = els.filter((e) => e.type === 'Event');
+      if (this.events.length && !this.events.some((e) => e.name === this.selectedEventName)) {
+        this.selectEvent(this.events[0].name);
+      }
+    }));
+  }
+
+  ngOnDestroy(): void {
+    this.subs.unsubscribe();
+  }
+
+  onFunctionsChange(): void {
+    this.codeService.setFunctionsSource(this.functionsSource);
+  }
+
+  selectEvent(name: string): void {
+    this.selectedEventName = name;
+    this.eventCodeText = this.codeService.getEventCode(name);
+  }
+
+  onEventCodeChange(): void {
+    if (this.selectedEventName) {
+      this.codeService.setEventCode(this.selectedEventName, this.eventCodeText);
+    }
+  }
+
+  hasEventCode(name: string): boolean {
+    return !!(this.eventCode[name] && this.eventCode[name].trim());
+  }
+}

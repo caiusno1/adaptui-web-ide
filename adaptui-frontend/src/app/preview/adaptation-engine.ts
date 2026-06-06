@@ -325,6 +325,63 @@ export function applyMatch(op: OperationModel, match: Map<string, string>, host:
 }
 
 // ---------------------------------------------------------------------------
+// Code operations (functions defined in the Code tab)
+// ---------------------------------------------------------------------------
+
+/** The sandbox-ish API handed to user code (operations and event refinements). */
+export interface CodeApi {
+  /** Every runtime element (mutate fields directly, or use the helpers). */
+  nodes: RuntimeNode[];
+  /** Current context values, keyed by property key. */
+  context: Record<string, string>;
+  /** Lookups. */
+  byId(name: string): RuntimeNode | undefined;
+  byName(name: string): RuntimeNode | undefined;
+  byClass(className: string): RuntimeNode[];
+  byType(type: string): RuntimeNode[];
+  /** Mutators. */
+  setStyle(node: RuntimeNode, cssProperty: string, value: string): void;
+  setBackground(node: RuntimeNode, color: string): void;
+  setFontSize(node: RuntimeNode, px: number): void;
+  hide(node: RuntimeNode): void;
+  show(node: RuntimeNode): void;
+  /** Writes a context value (event refinements only; persists and re-adapts). */
+  setContext(key: string, value: string): void;
+}
+
+/** A code-defined operation: a name and the compiled function to run. */
+export interface CodeOperation {
+  name: string;
+  run: (api: CodeApi) => void;
+}
+
+/** Builds the {@link CodeApi} over a set of runtime nodes for the given context. */
+export function buildCodeApi(
+  nodes: RuntimeNode[],
+  ctxProps: ContextProperty[],
+  setContext?: (key: string, value: string) => void,
+): CodeApi {
+  const context: Record<string, string> = {};
+  for (const p of ctxProps) {
+    context[p.key] = p.value;
+  }
+  return {
+    nodes,
+    context,
+    byId: (name) => nodes.find((n) => n.name === name),
+    byName: (name) => nodes.find((n) => n.name === name),
+    byClass: (className) => nodes.filter((n) => n.className === className),
+    byType: (type) => nodes.filter((n) => n.type === type),
+    setStyle: (node, cssProperty, value) => { if (node) { node.styles[cssProperty] = value; } },
+    setBackground: (node, color) => { if (node) { node.backgroundColor = color; } },
+    setFontSize: (node, px) => { if (node) { node.fontSize = px; } },
+    hide: (node) => { if (node) { node.visible = false; } },
+    show: (node) => { if (node) { node.visible = true; } },
+    setContext: (key, value) => { if (setContext) { setContext(key, value); } },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Full run
 // ---------------------------------------------------------------------------
 
@@ -332,11 +389,19 @@ function clone(host: HostGraph): HostGraph {
   return { nodes: host.nodes.map((n) => ({ ...n })), edges: host.edges.map((e) => ({ ...e })) };
 }
 
-/** Applies every firing rule's operation to a copy of the base host graph. */
-export function runAdaptation(base: HostGraph, rules: AdaptmlRule[], ops: OperationModel[], ctxProps: ContextProperty[]): HostGraph {
+/**
+ * Applies every firing rule's operation to a copy of the base host graph. A rule's
+ * operation is either a modelled (graph-transformation) operation or a code operation
+ * defined in the Code tab — both are referenced by name.
+ */
+export function runAdaptation(
+  base: HostGraph, rules: AdaptmlRule[], ops: OperationModel[], ctxProps: ContextProperty[],
+  codeOps: CodeOperation[] = [],
+): HostGraph {
   const host = clone(base);
   const ctx = new Map(ctxProps.map((p) => [p.key, p]));
   const opByName = new Map(ops.map((o) => [o.name, o]));
+  const codeByName = new Map(codeOps.map((o) => [o.name, o]));
 
   for (const rule of rules) {
     if (!ruleFires(rule, ctx)) {
@@ -344,6 +409,15 @@ export function runAdaptation(base: HostGraph, rules: AdaptmlRule[], ops: Operat
     }
     const op = opByName.get(rule.operationName);
     if (!op) {
+      // Not a modelled operation — try a code operation of the same name.
+      const codeOp = codeByName.get(rule.operationName);
+      if (codeOp) {
+        try {
+          codeOp.run(buildCodeApi(host.nodes, ctxProps));
+        } catch {
+          // A faulty code operation must not break the rest of the adaptation.
+        }
+      }
       continue;
     }
     const matches = findMatches(op, host);
