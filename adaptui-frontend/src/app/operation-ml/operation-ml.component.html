@@ -1,0 +1,131 @@
+<div class="op-editor">
+
+  <aside class="op-side">
+    <h3 class="side-title">Operations</h3>
+
+    <div class="op-list">
+      <div
+        *ngFor="let op of operations"
+        class="op-row"
+        [class.active]="op.id === currentOpId"
+        (click)="selectOperation(op.id)">
+        <span class="op-name">{{ op.name }}</span>
+        <button class="op-del" type="button" (click)="deleteOperation(op.id); $event.stopPropagation()" title="Delete operation">✕</button>
+      </div>
+    </div>
+    <button class="add-op" type="button" (click)="addOperation()"><mat-icon>add</mat-icon> New operation</button>
+
+    <label class="field" *ngIf="currentOpId">
+      <span>Operation name</span>
+      <input type="text" [(ngModel)]="currentOpName" (ngModelChange)="onOpNameChange()">
+    </label>
+
+    <div class="palette">
+      <button
+        *ngFor="let item of paletteItems"
+        #paletteButton
+        type="button"
+        class="palette-item"
+        [ngClass]="'palette-' + item.kind"
+        (click)="addNode(item)"
+        matTooltip="Click to add, or drag onto the canvas"
+        matTooltipPosition="right">
+        <span class="palette-icon"><mat-icon>{{ item.icon }}</mat-icon></span>
+        <span class="palette-label">{{ item.label }}</span>
+      </button>
+    </div>
+
+    <div class="palette-hint">
+      <mat-icon class="hint-icon">swap_horiz</mat-icon>
+      <span>Tag nodes/edges <b>«preserve»</b>, <b>«create»</b> or <b>«delete»</b> to express the LHS→RHS rule. Draw edges between pattern nodes to match relations.</span>
+    </div>
+
+    <!-- Pattern-node configuration -->
+    <div class="config-panel" *ngIf="selectedNode as n">
+      <h4>Pattern node</h4>
+      <label class="field">
+        <span>Role</span>
+        <select [(ngModel)]="n.role" (ngModelChange)="onNodeChange()">
+          <option *ngFor="let r of roles" [value]="r">{{ r }}</option>
+        </select>
+      </label>
+      <label class="field" *ngIf="n.kind === 'element'">
+        <span>Match type</span>
+        <select [(ngModel)]="n.match" (ngModelChange)="onNodeChange()">
+          <option *ngFor="let m of matches" [value]="m">{{ m }}</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Selector</span>
+        <select [(ngModel)]="n.selectorKind" (ngModelChange)="onNodeSelectorKindChange()">
+          <option *ngFor="let sk of selectorKinds" [value]="sk">{{ sk }}</option>
+        </select>
+      </label>
+      <label class="field" *ngIf="n.selectorKind !== 'none'">
+        <span>{{ n.selectorKind === 'id' ? 'Element' : 'Class' }}</span>
+        <select [(ngModel)]="n.selector" (ngModelChange)="onNodeChange()">
+          <option value="" disabled>— choose —</option>
+          <option *ngFor="let o of selectorOptions" [value]="o">{{ o }}</option>
+        </select>
+      </label>
+
+      <ng-container *ngIf="showAssignments">
+        <div class="assign-head">Set on RHS</div>
+        <ng-container *ngIf="n.kind === 'element'">
+          <label class="field">
+            <span>Visibility</span>
+            <select [(ngModel)]="n.setVisible" (ngModelChange)="onNodeChange()">
+              <option value="">— unchanged —</option>
+              <option value="true">visible</option>
+              <option value="false">invisible</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Font size</span>
+            <input type="number" [(ngModel)]="n.setFontSize" (ngModelChange)="onNodeChange()" placeholder="unchanged">
+          </label>
+        </ng-container>
+        <label class="field" *ngIf="n.kind === 'style'">
+          <span>Background colour</span>
+          <span class="color-row">
+            <input type="color" [(ngModel)]="n.setBackgroundColor" (ngModelChange)="onNodeChange()">
+            <input type="text" class="color-text" [(ngModel)]="n.setBackgroundColor" (ngModelChange)="onNodeChange()">
+          </span>
+        </label>
+      </ng-container>
+    </div>
+
+    <!-- Pattern-edge configuration -->
+    <div class="config-panel" *ngIf="selectedEdge as e">
+      <h4>Pattern edge</h4>
+      <label class="field">
+        <span>Role</span>
+        <select [(ngModel)]="e.role" (ngModelChange)="onEdgeChange()">
+          <option *ngFor="let r of roles" [value]="r">{{ r }}</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Relation</span>
+        <select [(ngModel)]="e.relation" (ngModelChange)="onEdgeChange()">
+          <option *ngFor="let rel of relations" [value]="rel">{{ rel }}</option>
+        </select>
+      </label>
+    </div>
+  </aside>
+
+  <section class="op-canvas-wrap">
+    <div class="op-actions">
+      <button mat-raised-button color="primary" (click)="exportOperations()" matTooltip="Download the operations model as XML">
+        <mat-icon>download</mat-icon>
+        Export Operations XML
+      </button>
+      <span class="actions-spacer"></span>
+      <button mat-icon-button (click)="zoomIn()" matTooltip="Zoom in"><mat-icon>zoom_in</mat-icon></button>
+      <button mat-icon-button (click)="zoomOut()" matTooltip="Zoom out"><mat-icon>zoom_out</mat-icon></button>
+      <button mat-icon-button (click)="fit()" matTooltip="Fit to screen"><mat-icon>fit_screen</mat-icon></button>
+      <button mat-icon-button (click)="deleteSelected()" matTooltip="Delete selection"><mat-icon>delete_outline</mat-icon></button>
+    </div>
+    <div #graphContainer class="op-graph"></div>
+  </section>
+
+</div>

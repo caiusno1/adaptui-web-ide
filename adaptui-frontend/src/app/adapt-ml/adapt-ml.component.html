@@ -1,0 +1,105 @@
+<div class="adapt-editor">
+
+  <!-- Palette + configuration panel -->
+  <aside class="adapt-side">
+    <h3 class="side-title">Adaptation</h3>
+
+    <button
+      *ngFor="let item of paletteItems"
+      #paletteButton
+      type="button"
+      class="palette-item"
+      [ngClass]="'palette-' + item.kind"
+      (click)="addNode(item)"
+      matTooltip="Click to add, or drag onto the canvas"
+      matTooltipPosition="right">
+      <span class="palette-icon"><mat-icon>{{ item.icon }}</mat-icon></span>
+      <span class="palette-label">{{ item.label }}</span>
+    </button>
+
+    <div class="palette-hint">
+      <mat-icon class="hint-icon">trending_flat</mat-icon>
+      <span>Draw an arrow from a <b>Condition</b> to an <b>Operation</b>: when the condition holds, the operation is applied.</span>
+    </div>
+
+    <!-- Configuration of the selected node -->
+    <div class="config-panel" *ngIf="selectedData as data">
+      <h4 *ngIf="data.kind === 'condition'">Condition</h4>
+      <h4 *ngIf="data.kind === 'gate'">Logic gate</h4>
+      <h4 *ngIf="data.kind === 'operation'">Operation</h4>
+
+      <!-- Gate -->
+      <ng-container *ngIf="data.kind === 'gate' && data.gate as g">
+        <label class="field">
+          <span>Combine inputs with</span>
+          <select [(ngModel)]="g.op" (ngModelChange)="onGateChange()">
+            <option value="and">AND — all must hold</option>
+            <option value="or">OR — any may hold</option>
+          </select>
+        </label>
+      </ng-container>
+
+      <!-- Condition -->
+      <ng-container *ngIf="data.kind === 'condition' && data.condition as c">
+        <div class="empty-note" *ngIf="activatedContext.length === 0">
+          No context properties are activated. Enable some in the <b>CONTEXTML</b> tab to build conditions.
+        </div>
+        <ng-container *ngIf="activatedContext.length > 0">
+          <label class="field">
+            <span>Context property</span>
+            <select [(ngModel)]="c.propertyKey" (ngModelChange)="onConditionPropertyChange()">
+              <option *ngFor="let p of activatedContext" [value]="p.key">{{ p.label }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Operator</span>
+            <select [(ngModel)]="c.operator" (ngModelChange)="onConfigChange()">
+              <option *ngFor="let op of conditionOperators" [value]="op">{{ op }}</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Value</span>
+            <select *ngIf="conditionIsEnum" [(ngModel)]="c.value" (ngModelChange)="onConfigChange()">
+              <option *ngFor="let v of conditionEnumValues" [value]="v">{{ v }}</option>
+            </select>
+            <input *ngIf="!conditionIsEnum" type="number" [(ngModel)]="c.value" (ngModelChange)="onConfigChange()">
+          </label>
+        </ng-container>
+      </ng-container>
+
+      <!-- Operation -->
+      <ng-container *ngIf="data.kind === 'operation' && data.operation as o">
+        <div class="empty-note" *ngIf="operationNames.length === 0">
+          No operations defined yet — model some in the <b>OPERATIONS</b> tab.
+        </div>
+        <label class="field" *ngIf="operationNames.length > 0">
+          <span>Operation</span>
+          <select [(ngModel)]="o.operationName" (ngModelChange)="onConfigChange()">
+            <option value="" disabled>— choose —</option>
+            <option *ngFor="let name of operationNames" [value]="name">{{ name }}</option>
+          </select>
+        </label>
+      </ng-container>
+    </div>
+  </aside>
+
+  <!-- Canvas with its action toolbar -->
+  <section class="adapt-canvas-wrap">
+    <div class="adapt-actions">
+      <button mat-raised-button color="primary" (click)="exportAdaptml()" matTooltip="Download the adaptation model as XML">
+        <mat-icon>download</mat-icon>
+        Export ADAPTML XML
+      </button>
+      <span class="actions-spacer"></span>
+      <button mat-icon-button (click)="zoomIn()" matTooltip="Zoom in"><mat-icon>zoom_in</mat-icon></button>
+      <button mat-icon-button (click)="zoomOut()" matTooltip="Zoom out"><mat-icon>zoom_out</mat-icon></button>
+      <button mat-icon-button (click)="fit()" matTooltip="Fit to screen"><mat-icon>fit_screen</mat-icon></button>
+      <button mat-icon-button (click)="resetView()" matTooltip="Reset zoom"><mat-icon>youtube_searched_for</mat-icon></button>
+      <button mat-icon-button (click)="deleteSelected()" matTooltip="Delete selection"><mat-icon>delete_outline</mat-icon></button>
+      <button mat-icon-button (click)="clearAll()" matTooltip="Clear model"><mat-icon>layers_clear</mat-icon></button>
+    </div>
+
+    <div #graphContainer class="adapt-graph"></div>
+  </section>
+
+</div>

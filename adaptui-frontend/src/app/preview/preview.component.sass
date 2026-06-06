@@ -1,0 +1,191 @@
+.preview-page
+  display: flex
+  height: calc(100vh - 112px)
+  min-height: 480px
+  font-family: Roboto, "Helvetica Neue", sans-serif
+
+.ctx-side
+  flex: 0 0 240px
+  display: flex
+  flex-direction: column
+  gap: 8px
+  padding: 12px
+  background: #fafafa
+  border-right: 1px solid #e0e0e0
+  overflow-y: auto
+
+.side-title
+  margin: 0 0 2px
+  font-size: 13px
+  font-weight: 500
+  text-transform: uppercase
+  letter-spacing: .04em
+  color: #607d8b
+
+.ctx-hint
+  margin: 0 0 6px
+  font-size: 11.5px
+  line-height: 1.4
+  color: #78909c
+
+.empty-note
+  padding: 8px 10px
+  font-size: 11.5px
+  line-height: 1.4
+  color: #8a6d3b
+  background: #fff8e1
+  border-radius: 6px
+
+.field
+  display: flex
+  flex-direction: column
+  gap: 3px
+  margin-bottom: 6px
+  font-size: 11.5px
+  color: #607d8b
+
+.field select, .field input
+  padding: 6px 8px
+  font-size: 13px
+  color: #263238
+  border: 1px solid #cfd8dc
+  border-radius: 5px
+  background: #fff
+
+.ctx-status
+  display: flex
+  align-items: center
+  gap: 6px
+  margin-top: auto
+  padding: 10px
+  font-size: 12px
+  color: #2e7d32
+  background: #e8f5e9
+  border-radius: 6px
+
+.status-icon
+  font-size: 18px
+  width: 18px
+  height: 18px
+
+.preview-stage
+  flex: 1 1 auto
+  overflow: auto
+  padding: 16px 24px 24px
+  background: #eceff1
+
+.view-bar
+  display: flex
+  flex-wrap: wrap
+  gap: 6px
+  margin-bottom: 16px
+
+.view-tab
+  padding: 6px 14px
+  font-size: 13px
+  color: #37474f
+  background: #fff
+  border: 1px solid #cfd8dc
+  border-radius: 16px
+  cursor: pointer
+
+.view-tab.active
+  color: #fff
+  background: #3949ab
+  border-color: #3949ab
+
+.stage-inner
+  display: block
+
+.ctrl-button
+  box-sizing: border-box
+  padding: 6px 14px
+  font-size: 13px
+  color: #fff
+  background: #3949ab
+  border: none
+  border-radius: 6px
+  cursor: pointer
+
+.ctrl-link
+  color: #3949ab
+  cursor: pointer
+  text-decoration: underline
+
+.ctrl-checkbox
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  font-size: 13px
+  cursor: pointer
+
+.ctrl-input
+  box-sizing: border-box
+  padding: 6px 8px
+  font-size: 13px
+  border: 1px solid #cfd8dc
+  border-radius: 5px
+
+.placeholder
+  color: #90a4ae
+  font-size: 14px
+
+.rt-node
+  box-sizing: border-box
+
+// Default box chrome for *plain* (unstyled) nodes — styled nodes render bare so
+// the Style model fully defines their look.
+.rt-default
+  border-radius: 8px
+  padding: 10px
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .12)
+
+// Wrapper around an interactive control dissolves so the control becomes a direct
+// flex/grid item of its parent (stretches in a column, stays inline in a row).
+.rt-control-wrap
+  display: contents
+
+.rt-container.rt-default
+  border: 1px solid #b0bec5
+  background: #ffffff
+  min-width: 220px
+
+.rt-component.rt-default
+  border: 1px solid #cfd8dc
+  background: #f7fbff
+  margin-top: 8px
+
+.rt-event.rt-default
+  display: inline-block
+  border: 1px solid #ffcc80
+  background: #fff3e0
+  padding: 3px 8px
+  border-radius: 12px
+  font-size: 11px
+
+.rt-head
+  display: flex
+  align-items: baseline
+  gap: 8px
+
+.rt-name
+  font-weight: 500
+  color: inherit
+
+.rt-badge
+  font-size: 10px
+  color: #2e7d32
+  background: #c8e6c9
+  border-radius: 8px
+  padding: 0 6px
+
+.rt-flow
+  margin-top: 4px
+  font-size: 11px
+  color: #5c6bc0
+
+.rt-children
+  display: flex
+  flex-wrap: wrap
+  gap: 12px
+  margin-top: 8px

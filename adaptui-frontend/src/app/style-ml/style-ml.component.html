@@ -1,0 +1,84 @@
+<div class="style-editor">
+
+  <aside class="style-side">
+    <h3 class="side-title">Style</h3>
+
+    <button
+      #paletteButton
+      type="button"
+      class="palette-item palette-style"
+      (click)="addRule()"
+      matTooltip="Click to add, or drag onto the canvas"
+      matTooltipPosition="right">
+      <span class="palette-icon"><mat-icon>palette</mat-icon></span>
+      <span class="palette-label">Style Rule</span>
+    </button>
+
+    <div class="palette-hint">
+      <mat-icon class="hint-icon">format_paint</mat-icon>
+      <span>A style rule concretizes IFML elements selected by <b>id</b> or <b>class</b> with concrete properties — colours, typography, borders, spacing, shadows and more.</span>
+    </div>
+
+    <div class="config-panel" *ngIf="selectedRule as r">
+      <h4>Style Rule</h4>
+      <label class="field">
+        <span>Selector</span>
+        <select [(ngModel)]="r.selectorKind" (ngModelChange)="onSelectorKindChange()">
+          <option value="class">By class</option>
+          <option value="id">By element id</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>{{ r.selectorKind === 'id' ? 'Element' : 'Class' }}</span>
+        <select [(ngModel)]="r.selector" (ngModelChange)="onRuleChange()">
+          <option value="" disabled>— choose —</option>
+          <option *ngFor="let o of selectorOptions" [value]="o">{{ o }}</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Control (e.g. for events)</span>
+        <select [(ngModel)]="r.control" (ngModelChange)="onRuleChange()">
+          <option *ngFor="let c of controlTypes" [value]="c">{{ controlLabel(c) }}</option>
+        </select>
+      </label>
+
+      <div class="style-group" *ngFor="let g of styleGroups">
+        <h5 class="group-title">{{ g }}</h5>
+        <label class="field" *ngFor="let def of propsInGroup(g)" [ngSwitch]="def.input">
+          <span>{{ def.label }}</span>
+
+          <span class="color-row" *ngSwitchCase="'color'">
+            <input type="color" [ngModel]="propValue(def)" (ngModelChange)="setProp(def, $event)">
+            <input type="text" class="color-text" [ngModel]="rawValue(def)" (ngModelChange)="setProp(def, $event)" placeholder="unset">
+          </span>
+
+          <input *ngSwitchCase="'number'" type="number" [ngModel]="rawValue(def)" (ngModelChange)="setProp(def, $event)" [placeholder]="def.placeholder || ''">
+
+          <input *ngSwitchCase="'text'" type="text" [ngModel]="rawValue(def)" (ngModelChange)="setProp(def, $event)" [placeholder]="def.placeholder || ''">
+
+          <select *ngSwitchCase="'select'" [ngModel]="rawValue(def)" (ngModelChange)="setProp(def, $event)">
+            <option value="">—</option>
+            <option *ngFor="let o of def.options" [value]="o.value">{{ o.label }}</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </aside>
+
+  <section class="style-canvas-wrap">
+    <div class="style-actions">
+      <button mat-raised-button color="primary" (click)="exportStyle()" matTooltip="Download the style model as XML">
+        <mat-icon>download</mat-icon>
+        Export Style XML
+      </button>
+      <span class="actions-spacer"></span>
+      <button mat-icon-button (click)="zoomIn()" matTooltip="Zoom in"><mat-icon>zoom_in</mat-icon></button>
+      <button mat-icon-button (click)="zoomOut()" matTooltip="Zoom out"><mat-icon>zoom_out</mat-icon></button>
+      <button mat-icon-button (click)="fit()" matTooltip="Fit to screen"><mat-icon>fit_screen</mat-icon></button>
+      <button mat-icon-button (click)="deleteSelected()" matTooltip="Delete selection"><mat-icon>delete_outline</mat-icon></button>
+      <button mat-icon-button (click)="clearAll()" matTooltip="Clear model"><mat-icon>layers_clear</mat-icon></button>
+    </div>
+    <div #graphContainer class="style-graph"></div>
+  </section>
+
+</div>
