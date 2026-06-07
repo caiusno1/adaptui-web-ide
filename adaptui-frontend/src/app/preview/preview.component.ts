@@ -5,11 +5,12 @@ import { debounceTime } from 'rxjs/operators';
 import { AdaptmlRule, ContextProperty, IfmlElementRef } from '../model/adaptation.model';
 import { IfmlFlow, OperationModel, StyleRuleData } from '../model/transformation.model';
 import { AdaptmlModelService } from '../services/adaptml-model.service';
+import { CodeModelService } from '../services/code-model.service';
 import { ContextModelService } from '../services/context-model.service';
 import { IfmlModelService } from '../services/ifml-model.service';
 import { OperationModelService } from '../services/operation-model.service';
 import { StyleModelService } from '../services/style-model.service';
-import { buildHostGraph, buildRenderTree, RenderNode, ruleFires, runAdaptation } from './adaptation-engine';
+import { buildCodeApi, buildHostGraph, buildRenderTree, CodeApi, CodeOperation, RenderNode, ruleFires, runAdaptation } from './adaptation-engine';
 
 /**
  * Live preview of the adaptive UI. It renders the IFML model concretized by the
@@ -35,6 +36,8 @@ export class PreviewComponent implements OnInit, OnDestroy {
   hasModel = false;
 
   private subscriptions = new Subscription();
+  private contextProps: ContextProperty[] = [];
+  private eventHandlers = new Map<string, (api: CodeApi) => void>();
 
   constructor(
     private ifmlService: IfmlModelService,
@@ -42,6 +45,7 @@ export class PreviewComponent implements OnInit, OnDestroy {
     private operationService: OperationModelService,
     private adaptmlService: AdaptmlModelService,
     private contextService: ContextModelService,
+    private codeService: CodeModelService,
   ) { }
 
   ngOnInit(): void {
@@ -53,11 +57,17 @@ export class PreviewComponent implements OnInit, OnDestroy {
         this.operationService.models$,
         this.adaptmlService.rules$,
         this.contextService.properties$,
+        this.codeService.operations$,
         // Coalesce synchronous bursts and recompute in a fresh change-detection
         // turn (avoids ExpressionChangedAfterChecked at load time).
-      ]).pipe(debounceTime(0)).subscribe(([elements, flows, styles, ops, rules, ctx]) => {
-        this.recompute(elements, flows, styles, ops, rules, ctx);
+      ]).pipe(debounceTime(0)).subscribe((vals) => {
+        const [elements, flows, styles, ops, rules, ctx, codeOps] = vals as
+          [IfmlElementRef[], IfmlFlow[], StyleRuleData[], OperationModel[], AdaptmlRule[], ContextProperty[], CodeOperation[]];
+        this.recompute(elements, flows, styles, ops, rules, ctx, codeOps);
       })
+    );
+    this.subscriptions.add(
+      this.codeService.eventHandlers$.subscribe((handlers) => { this.eventHandlers = handlers; })
     );
   }
 
@@ -121,30 +131,42 @@ export class PreviewComponent implements OnInit, OnDestroy {
     return node.flows.map((f) => f.targetName).join(', ');
   }
 
-  /** Triggering an event reroutes to the flow's target view (or re-renders in place when self-targeting). */
+  /**
+   * Triggering an event runs its code refinement (Code tab), if any, then reroutes
+   * to the flow's target view (or re-renders in place when self-targeting).
+   */
   onTrigger(node: RenderNode): void {
-    const flow = node.flows[0];
-    if (!flow || !flow.targetViewId) {
-      return;
+    const handler = this.eventHandlers.get(node.name);
+    if (handler) {
+      const flat: RenderNode[] = [];
+      const collect = (n: RenderNode) => { flat.push(n); n.children.forEach(collect); };
+      this.views.forEach(collect);
+      try {
+        handler(buildCodeApi(flat, this.contextProps, (k, v) => this.contextService.setValue(k, v)));
+      } catch {
+        // A faulty event refinement must not break interaction.
+      }
     }
-    if (this.views.some((v) => v.id === flow.targetViewId)) {
+    const flow = node.flows[0];
+    if (flow && flow.targetViewId && this.views.some((v) => v.id === flow.targetViewId)) {
       this.activeViewId = flow.targetViewId;
     }
   }
 
   private recompute(
     elements: IfmlElementRef[], flows: IfmlFlow[], styles: StyleRuleData[],
-    ops: OperationModel[], rules: AdaptmlRule[], ctx: ContextProperty[],
+    ops: OperationModel[], rules: AdaptmlRule[], ctx: ContextProperty[], codeOps: CodeOperation[],
   ): void {
     this.hasModel = elements.length > 0;
     this.activatedContext = ctx.filter((p) => p.activated);
+    this.contextProps = ctx;
     this.ruleCount = rules.length;
 
     const ctxMap = new Map(ctx.map((p) => [p.key, p]));
     this.firedCount = rules.filter((r) => ruleFires(r, ctxMap)).length;
 
     const base = buildHostGraph(elements, flows, styles);
-    const host = runAdaptation(base, rules, ops, ctx);
+    const host = runAdaptation(base, rules, ops, ctx, codeOps);
     this.views = buildRenderTree(host);
 
     if (!this.views.some((v) => v.id === this.activeViewId)) {

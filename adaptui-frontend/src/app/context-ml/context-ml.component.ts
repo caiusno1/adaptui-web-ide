@@ -21,4 +21,10 @@ export class ContextMlComponent implements OnInit {
   toggle(key: string, activated: boolean): void {
     this.contextService.setActivated(key, activated);
   }
+
+  remove(key: string, label: string): void {
+    if (confirm(`Delete the context property “${label}”?`)) {
+      this.contextService.remove(key);
+    }
+  }
 }

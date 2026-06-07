@@ -10,6 +10,9 @@
         {{ p.label }}
       </mat-checkbox>
       <span class="prop-meta">{{ p.type === 'enum' ? (p.values || []).join(' / ') : 'numeric' }}</span>
+      <button class="prop-del" type="button" (click)="remove(p.key, p.label)" matTooltip="Delete property" aria-label="Delete property">
+        <mat-icon>delete_outline</mat-icon>
+      </button>
     </li>
   </ul>
 </div>

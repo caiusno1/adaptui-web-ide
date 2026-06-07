@@ -14,6 +14,7 @@ import { AdaptMlComponent } from './adapt-ml/adapt-ml.component';
 import { StyleMlComponent } from './style-ml/style-ml.component';
 import { OperationMlComponent } from './operation-ml/operation-ml.component';
 import { PreviewComponent } from './preview/preview.component';
+import { CodeMlComponent } from './code-ml/code-ml.component';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {MatButtonModule} from '@angular/material/button';
 import {MatTooltipModule} from '@angular/material/tooltip';
@@ -26,7 +27,8 @@ import {MatTooltipModule} from '@angular/material/tooltip';
     AdaptMlComponent,
     StyleMlComponent,
     OperationMlComponent,
-    PreviewComponent
+    PreviewComponent,
+    CodeMlComponent
   ],
   imports: [
     BrowserModule,

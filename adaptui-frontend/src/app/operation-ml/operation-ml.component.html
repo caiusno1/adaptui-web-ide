@@ -71,27 +71,30 @@
 
       <ng-container *ngIf="showAssignments">
         <div class="assign-head">Set on RHS</div>
-        <ng-container *ngIf="n.kind === 'element'">
-          <label class="field">
-            <span>Visibility</span>
-            <select [(ngModel)]="n.setVisible" (ngModelChange)="onNodeChange()">
+        <label class="field" *ngIf="n.kind === 'element'">
+          <span>Visibility</span>
+          <select [(ngModel)]="n.setVisible" (ngModelChange)="onNodeChange()">
+            <option value="">— unchanged —</option>
+            <option value="true">visible</option>
+            <option value="false">invisible</option>
+          </select>
+        </label>
+        <div class="style-group" *ngFor="let g of styleGroups">
+          <h5 class="group-title">{{ g }}</h5>
+          <label class="field" *ngFor="let def of propsInGroup(g)" [ngSwitch]="def.input">
+            <span>{{ def.label }}</span>
+            <span class="color-row" *ngSwitchCase="'color'">
+              <input type="color" [ngModel]="propNodeValue(def)" (ngModelChange)="setNodeProp(def, $event)">
+              <input type="text" class="color-text" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" placeholder="unchanged">
+            </span>
+            <input *ngSwitchCase="'number'" type="number" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" [placeholder]="def.placeholder || 'unchanged'">
+            <input *ngSwitchCase="'text'" type="text" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" [placeholder]="def.placeholder || 'unchanged'">
+            <select *ngSwitchCase="'select'" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)">
               <option value="">— unchanged —</option>
-              <option value="true">visible</option>
-              <option value="false">invisible</option>
+              <option *ngFor="let o of def.options" [value]="o.value">{{ o.label }}</option>
             </select>
           </label>
-          <label class="field">
-            <span>Font size</span>
-            <input type="number" [(ngModel)]="n.setFontSize" (ngModelChange)="onNodeChange()" placeholder="unchanged">
-          </label>
-        </ng-container>
-        <label class="field" *ngIf="n.kind === 'style'">
-          <span>Background colour</span>
-          <span class="color-row">
-            <input type="color" [(ngModel)]="n.setBackgroundColor" (ngModelChange)="onNodeChange()">
-            <input type="text" class="color-text" [(ngModel)]="n.setBackgroundColor" (ngModelChange)="onNodeChange()">
-          </span>
-        </label>
+        </div>
       </ng-container>
     </div>
 
@@ -124,6 +127,7 @@
       <button mat-icon-button (click)="zoomOut()" matTooltip="Zoom out"><mat-icon>zoom_out</mat-icon></button>
       <button mat-icon-button (click)="fit()" matTooltip="Fit to screen"><mat-icon>fit_screen</mat-icon></button>
       <button mat-icon-button (click)="deleteSelected()" matTooltip="Delete selection"><mat-icon>delete_outline</mat-icon></button>
+      <button mat-icon-button (click)="clearGraph()" matTooltip="Clear operation"><mat-icon>layers_clear</mat-icon></button>
     </div>
     <div #graphContainer class="op-graph"></div>
   </section>

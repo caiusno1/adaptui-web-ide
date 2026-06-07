@@ -12,7 +12,7 @@
 
 import { AdaptmlRule, BoolExpr, ConditionConfig, ContextProperty, IfmlElementRef } from '../model/adaptation.model';
 import {
-  DEDICATED_STYLE_KEYS, HostGraph, IfmlFlow, OperationModel, PatternNodeData, RuntimeEdge, RuntimeNode,
+  HostGraph, IfmlFlow, OperationModel, PatternNodeData, RuntimeEdge, RuntimeNode,
   STYLE_PROPERTIES, StyleRuleData,
 } from '../model/transformation.model';
 
@@ -30,21 +30,21 @@ function genId(prefix: string): string {
 export function buildHostGraph(elements: IfmlElementRef[], flows: IfmlFlow[], styles: StyleRuleData[]): HostGraph {
   const nodes: RuntimeNode[] = elements.map((el) => {
     const { props, control } = resolveStyle(el, styles);
-    const size = Number(props['fontSize']);
-    const { self, children } = cssFromStyleProps(props);
-    return {
+    const node: RuntimeNode = {
       id: el.cellId,
       sourceId: el.cellId,
       name: el.name,
       type: el.type,
       className: el.className,
       visible: true,
-      fontSize: props['fontSize'] && Number.isFinite(size) ? size : DEFAULT_FONT_SIZE,
-      backgroundColor: props['backgroundColor'] || '',
+      fontSize: DEFAULT_FONT_SIZE,
+      backgroundColor: '',
       control,
-      styles: self,
-      childStyles: children,
+      styles: {},
+      childStyles: {},
     };
+    applyStyleProps(node, props);
+    return node;
   });
 
   const ids = new Set(nodes.map((n) => n.id));
@@ -87,27 +87,32 @@ function resolveStyle(el: IfmlElementRef, styles: StyleRuleData[]): { props: Rec
 }
 
 /**
- * Maps resolved style props to two CSS maps (units applied), excluding bg/fontSize:
- * `self` for the element's own box and `children` for its children container
- * (where flex/grid layout properties live).
+ * Merges catalog-keyed style props onto a runtime node: `backgroundColor` and
+ * `fontSize` are dedicated (operation-mutable) fields, flex/grid layout props go
+ * to the children container (`childStyles`), everything else to the own-box
+ * `styles` map (units applied). Used for both base styling and operation RHS.
  */
-function cssFromStyleProps(props: Record<string, string>): { self: Record<string, string>; children: Record<string, string> } {
-  const self: Record<string, string> = {};
-  const children: Record<string, string> = {};
+function applyStyleProps(node: RuntimeNode, props: Record<string, string>): void {
   for (const def of STYLE_PROPERTIES) {
-    if (DEDICATED_STYLE_KEYS.indexOf(def.key) >= 0) {
+    const v = props[def.key];
+    if (v === undefined || v === '') {
       continue;
     }
-    const v = props[def.key];
-    if (v !== undefined && v !== '') {
-      (def.target === 'children' ? children : self)[def.css] = v + (def.unit || '');
+    if (def.key === 'backgroundColor') {
+      node.backgroundColor = v;
+    } else if (def.key === 'fontSize') {
+      const n = Number(v);
+      if (Number.isFinite(n)) {
+        node.fontSize = n;
+      }
+    } else {
+      (def.target === 'children' ? node.childStyles : node.styles)[def.css] = v + (def.unit || '');
     }
   }
   // A border only shows if a style is set — default to solid when width/colour are given.
-  if ((self['border-width'] || self['border-color']) && !self['border-style']) {
-    self['border-style'] = 'solid';
+  if ((node.styles['border-width'] || node.styles['border-color']) && !node.styles['border-style']) {
+    node.styles['border-style'] = 'solid';
   }
-  return { self, children };
 }
 
 // ---------------------------------------------------------------------------
@@ -236,14 +241,8 @@ function applyAssignments(node: RuntimeNode, d: PatternNodeData): void {
   } else if (d.setVisible === 'false') {
     node.visible = false;
   }
-  if (d.setFontSize) {
-    const n = Number(d.setFontSize);
-    if (!Number.isNaN(n)) {
-      node.fontSize = n;
-    }
-  }
-  if (d.setBackgroundColor) {
-    node.backgroundColor = d.setBackgroundColor;
+  if (d.setProps) {
+    applyStyleProps(node, d.setProps);
   }
 }
 
@@ -326,6 +325,63 @@ export function applyMatch(op: OperationModel, match: Map<string, string>, host:
 }
 
 // ---------------------------------------------------------------------------
+// Code operations (functions defined in the Code tab)
+// ---------------------------------------------------------------------------
+
+/** The sandbox-ish API handed to user code (operations and event refinements). */
+export interface CodeApi {
+  /** Every runtime element (mutate fields directly, or use the helpers). */
+  nodes: RuntimeNode[];
+  /** Current context values, keyed by property key. */
+  context: Record<string, string>;
+  /** Lookups. */
+  byId(name: string): RuntimeNode | undefined;
+  byName(name: string): RuntimeNode | undefined;
+  byClass(className: string): RuntimeNode[];
+  byType(type: string): RuntimeNode[];
+  /** Mutators. */
+  setStyle(node: RuntimeNode, cssProperty: string, value: string): void;
+  setBackground(node: RuntimeNode, color: string): void;
+  setFontSize(node: RuntimeNode, px: number): void;
+  hide(node: RuntimeNode): void;
+  show(node: RuntimeNode): void;
+  /** Writes a context value (event refinements only; persists and re-adapts). */
+  setContext(key: string, value: string): void;
+}
+
+/** A code-defined operation: a name and the compiled function to run. */
+export interface CodeOperation {
+  name: string;
+  run: (api: CodeApi) => void;
+}
+
+/** Builds the {@link CodeApi} over a set of runtime nodes for the given context. */
+export function buildCodeApi(
+  nodes: RuntimeNode[],
+  ctxProps: ContextProperty[],
+  setContext?: (key: string, value: string) => void,
+): CodeApi {
+  const context: Record<string, string> = {};
+  for (const p of ctxProps) {
+    context[p.key] = p.value;
+  }
+  return {
+    nodes,
+    context,
+    byId: (name) => nodes.find((n) => n.name === name),
+    byName: (name) => nodes.find((n) => n.name === name),
+    byClass: (className) => nodes.filter((n) => n.className === className),
+    byType: (type) => nodes.filter((n) => n.type === type),
+    setStyle: (node, cssProperty, value) => { if (node) { node.styles[cssProperty] = value; } },
+    setBackground: (node, color) => { if (node) { node.backgroundColor = color; } },
+    setFontSize: (node, px) => { if (node) { node.fontSize = px; } },
+    hide: (node) => { if (node) { node.visible = false; } },
+    show: (node) => { if (node) { node.visible = true; } },
+    setContext: (key, value) => { if (setContext) { setContext(key, value); } },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Full run
 // ---------------------------------------------------------------------------
 
@@ -333,11 +389,19 @@ function clone(host: HostGraph): HostGraph {
   return { nodes: host.nodes.map((n) => ({ ...n })), edges: host.edges.map((e) => ({ ...e })) };
 }
 
-/** Applies every firing rule's operation to a copy of the base host graph. */
-export function runAdaptation(base: HostGraph, rules: AdaptmlRule[], ops: OperationModel[], ctxProps: ContextProperty[]): HostGraph {
+/**
+ * Applies every firing rule's operation to a copy of the base host graph. A rule's
+ * operation is either a modelled (graph-transformation) operation or a code operation
+ * defined in the Code tab — both are referenced by name.
+ */
+export function runAdaptation(
+  base: HostGraph, rules: AdaptmlRule[], ops: OperationModel[], ctxProps: ContextProperty[],
+  codeOps: CodeOperation[] = [],
+): HostGraph {
   const host = clone(base);
   const ctx = new Map(ctxProps.map((p) => [p.key, p]));
   const opByName = new Map(ops.map((o) => [o.name, o]));
+  const codeByName = new Map(codeOps.map((o) => [o.name, o]));
 
   for (const rule of rules) {
     if (!ruleFires(rule, ctx)) {
@@ -345,6 +409,15 @@ export function runAdaptation(base: HostGraph, rules: AdaptmlRule[], ops: Operat
     }
     const op = opByName.get(rule.operationName);
     if (!op) {
+      // Not a modelled operation — try a code operation of the same name.
+      const codeOp = codeByName.get(rule.operationName);
+      if (codeOp) {
+        try {
+          codeOp.run(buildCodeApi(host.nodes, ctxProps));
+        } catch {
+          // A faulty code operation must not break the rest of the adaptation.
+        }
+      }
       continue;
     }
     const matches = findMatches(op, host);

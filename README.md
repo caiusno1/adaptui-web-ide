@@ -11,6 +11,7 @@ in a live preview:
 | **STYLE** | Style DSL | A concretization of IFML: assigns a rich set of concrete properties (typography, colours, gradients, borders, spacing, shadows) and a control (button / checkbox / input for events) to elements by id or class. |
 | **CONTEXTML** | Context model | The context properties (age, environment, device type, …) the UI should adapt to. |
 | **OPERATIONS** | Operation model | Reusable graph transformations (LHS → RHS) over IFML and Style — the adaptation actions. |
+| **CODE** | Code model | Operations written as JavaScript functions (usable like modelled operations), plus code that refines IFML events. |
 | **ADAPTML** | Adaptation model | Rules linking context conditions (combined by AND/OR gates) to the operations that should run. |
 | **PREVIEW** | Runtime | Renders the IFML+Style model as a live UI and adapts it by applying the ADAPTML rules for the current context. |
 
@@ -53,10 +54,12 @@ The tabs are connected through shared Angular services so they stay consistent:
 - **IFML elements** (`IfmlModelService`) — the IFML editor publishes its elements
   (name/id, type, adaptation class) so the other editors can target real elements.
 - **Context properties** (`ContextModelService`) — CONTEXTML *activates* the
-  properties to adapt to (`Age`, `Environment`, `Device Type`, `Gender`), each typed
-  `number` or `enum`.
+  properties to adapt to (`Time`, `Age`, `Environment`, `Device Type`, `Gender`), each
+  typed `number` or `enum`; properties can be deleted in the tab.
 - **Operations** (`OperationModelService`) — the Operations editor publishes the
   operations it defines (names for ADAPTML; full LHS/RHS models for the Preview).
+- **Code** (`CodeModelService`) — the Code editor compiles its functions into
+  **code operations** (also usable by name in ADAPTML) and **event refinements**.
 - **Style rules** (`StyleModelService`) and **ADAPTML rules** (`AdaptmlModelService`)
   are likewise published for the Preview.
 
@@ -71,15 +74,20 @@ The pieces compose like this:
   node/edge is tagged **«preserve»** (in both sides), **«create»** (RHS only) or
   **«delete»** (LHS only), and preserve/create nodes carry the property assignments
   applied on the right-hand side (e.g. `visible = false`, `backgroundColor = #222`).
+- **CODE** defines operations as JavaScript **functions** — each one becomes an
+  operation usable by name in ADAPTML, exactly like a modelled operation, receiving an
+  `api` to read context and mutate the live elements. The Code tab also **refines IFML
+  events** with code that runs when the event is triggered in the Preview.
 - **ADAPTML** rules link **conditions** (over *activated* context properties, e.g.
-  `age > 50`) to a **defined operation**. Conditions are combined by **«AND» / «OR»
-  gate** nodes into a boolean expression; an operation fires **only** when its
-  expression is satisfied (an operation with no conditions never fires).
+  `age > 50`) to a **defined operation** (modelled *or* code). Conditions are combined
+  by **«AND» / «OR» gate** nodes into a boolean expression; an operation fires **only**
+  when its expression is satisfied (an operation with no conditions never fires).
 - **PREVIEW** runs the whole stack: it builds a runtime *host graph* from IFML
   (concretized by Style), and for every ADAPTML rule whose condition expression holds
-  under the current context it matches the referenced operation's LHS in the host and
-  rewrites it (RHS). The rewritten graph is rendered as a navigable, page-style UI —
-  triggering an event's control reroutes between views. See the
+  it applies the referenced operation — a modelled rewrite (match LHS, apply RHS) or a
+  **code operation** (run the function over the host). The result is rendered as a
+  navigable, page-style UI; triggering an event reroutes between views and runs the
+  event's **code refinement**. See the
   [adaptation engine](adaptui-frontend/src/app/preview/adaptation-engine.ts).
 
 ---
@@ -121,13 +129,15 @@ adaptui-web-ide/
             │   ├── context-model.service.ts    ← context properties: activation + current value
             │   ├── ifml-model.service.ts        ← IFML elements (with containment) + navigation flows
             │   ├── operation-model.service.ts   ← operations defined in the Operations editor (names + full models)
+            │   ├── code-model.service.ts        ← Code tab: compiles functions to code operations + event refinements
             │   ├── style-model.service.ts       ← Style rules published for the Preview
             │   └── adaptml-model.service.ts     ← ADAPTML rules published for the Preview
             ├── tiny-ifml/        ← ★ graphical IFML editor (structure, navigation flows, adaptation class per element)
             ├── style-ml/         ← ★ graphical Style DSL editor (concretization: selector → background colour)
             ├── operation-ml/     ← ★ graphical Operations editor (LHS→RHS graph-transformation rules)
+            ├── code-ml/          ← ★ Code editor (functions as operations + event refinements)
             ├── adapt-ml/         ← ★ graphical ADAPTML editor (conditions → referenced operation)
-            ├── context-ml/       ← CONTEXTML tab (activate context properties)
+            ├── context-ml/       ← CONTEXTML tab (activate context properties / delete)
             └── preview/          ← ★ live adaptive Preview
                 ├── adaptation-engine.ts  ← pure graph-rewrite engine (build host, match, rewrite, render tree)
                 └── preview.component.*   ← context side menu + rendered, self-adapting UI
@@ -342,27 +352,72 @@ selected one as a single **LHS → RHS** rule:
    sub-pattern of the IFML/Style model.
 2. For each node/edge pick a **role** — **«preserve»** (matched and kept),
    **«create»** (added on the RHS) or **«delete»** (removed). Roles are colour-coded.
-3. On preserve/create nodes, set the properties to apply on the RHS — *Visibility* /
-   *Font size* for element nodes, *Background colour* for style nodes.
+3. On preserve/create nodes, set what to apply on the RHS — *Visibility* plus **any
+   style property** from the same catalog as the Style DSL (colours, gradients,
+   borders, typography, layout, …). So an operation can change *any* element
+   property, e.g. recolour surfaces and text for a dark theme.
+
+A single pattern node matching by type/class applies to **every** matching element
+(e.g. `match: ViewContainer` recolours all containers), since the engine applies all
+matches of the rule.
 
 **Export Operations XML** (`model.operations`) derives an explicit `<lhs>`/`<rhs>`
-from the roles:
+from the roles, with one `<set>` per assigned property:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <op:OperationModel xmlns:op="http://adaptui.org/operations/1.0" name="AdaptUI Operations">
-  <operation name="hideViews">
+  <operation name="Dark surfaces">
     <lhs>
-      <node id="n1" kind="element" match="ViewComponent" selector="class:View"/>
+      <node id="n1" kind="element" match="ViewContainer"/>
     </lhs>
     <rhs>
-      <node id="n1" kind="element" match="ViewComponent" selector="class:View">
-        <set property="visible" value="false"/>
+      <node id="n1" kind="element" match="ViewContainer">
+        <set property="backgroundColor" value="#0f172a"/>
+        <set property="backgroundImage" value="none"/>
+        <set property="borderColor" value="#1e293b"/>
       </node>
     </rhs>
   </operation>
 </op:OperationModel>
 ```
+
+---
+
+## Using the Code editor
+
+The **CODE** tab is for adaptations that are easier to *write* than to *model*.
+
+**Code operations.** In the *Functions* editor define plain JavaScript functions —
+each top-level `function name(api) { … }` becomes an **operation** that you can
+reference by name in the **ADAPTML** tab, exactly like a modelled (graph) operation.
+The detected names appear in the sidebar and in the ADAPTML operation list. Each
+function receives an `api`:
+
+```js
+function zebra(api) {
+  // Per-index logic like this is why it's a code operation, not a graph one.
+  api.byClass('post').forEach((post, i) => {
+    api.setBackground(post, i % 2 === 0 ? '#ffffff' : '#eef2ff');
+  });
+}
+```
+
+The `api` exposes `nodes`, `context`, lookups (`byId` / `byName` / `byClass` /
+`byType`) and mutators (`setBackground`, `setStyle`, `setFontSize`, `hide`, `show`).
+When a firing ADAPTML rule names a code operation, the Preview runs it over the host.
+
+**Event refinements.** Pick an IFML event and attach code that runs when the event is
+triggered in the Preview. Here the `api` also offers `setContext(key, value)`, which
+persists and re-adapts — so an event can drive the rest of the model:
+
+```js
+// Refine the 'Feed' event: jump the clock to the evening -> the dark-mode rule fires.
+api.setContext('time', '22');
+```
+
+Code runs in the browser via `new Function` — it's your own code in your own session
+(a prototyping facility), not a sandbox.
 
 ---
 
@@ -425,8 +480,8 @@ runtime**:
    number field or an enum dropdown) and the preview **re-adapts instantly**.
 4. For every ADAPTML rule whose boolean condition expression holds, the referenced
    operation's graph transformation is applied to a runtime copy of the IFML graph
-   (modifying `visible` / `fontSize` / `backgroundColor`, creating/deleting
-   nodes/edges). The status line shows how many rules are currently applied.
+   (changing visibility or any style property, creating/deleting nodes/edges). The
+   status line shows how many rules are currently applied.
 
 The matching-and-rewriting logic lives in a small, dependency-free module,
 [`adaptation-engine.ts`](adaptui-frontend/src/app/preview/adaptation-engine.ts).
@@ -445,6 +500,19 @@ standard IFML constructs only and concretized by the Style tab:
 
 It exercises the whole stack end to end: IFML structure + navigation, the Style DSL's
 flex/grid layout, gradients, cards and controls, and the Preview's page-style routing.
+
+It also ships time-driven adaptations:
+
+- **Daytime** (`Time` < 20) — a **code operation** `zebra` (defined in the Code tab)
+  stripes the post cards by index, showing a code function used as an operation.
+- **Evening** (`Time` ≥ 20) — two modelled operations (*Dark surfaces*, *Dark text*)
+  switch the whole app to a dark theme.
+- **Event refinements** (Code tab) — the *Feed* button jumps the clock to 22:00 (going
+  dark) and *Log out* resets it to 09:00 (going light), so triggering those events
+  re-adapts the UI via code.
+
+Set the *Time* value in the Preview's Context side menu — or click *Feed* / *Log out* —
+to see day/night flip live.
 
 ---
 
