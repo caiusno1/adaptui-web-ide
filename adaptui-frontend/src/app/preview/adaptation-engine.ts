@@ -330,6 +330,8 @@ export function applyMatch(op: OperationModel, match: Map<string, string>, host:
 
 /** Spec for a runtime element created by code. */
 export interface CreateElementSpec {
+  /** Optional stable id (used when replaying a persisted runtime overlay). */
+  id?: string;
   name?: string;
   /** 'ViewContainer' | 'ViewComponent' | 'Event'. Defaults to ViewComponent. */
   type?: string;
@@ -393,6 +395,31 @@ export interface CodeOperation {
   run: (api: CodeApi) => void;
 }
 
+/**
+ * A recorded runtime-graph mutation. Event refinements record these into a persistent
+ * overlay that the Preview re-applies on every recompute (so their changes survive
+ * adaptation), until the browser reloads or the user resets the runtime.
+ */
+export type OverlayCommand =
+  | { kind: 'create'; ref: string; elType: string; className: string; name: string; control: string; parent: string | null; props?: Record<string, string> }
+  | { kind: 'delete'; target: string }
+  | { kind: 'setBackground'; target: string; value: string }
+  | { kind: 'setFontSize'; target: string; value: number }
+  | { kind: 'setStyle'; target: string; prop: string; value: string }
+  | { kind: 'setName'; target: string; value: string }
+  | { kind: 'setClass'; target: string; value: string }
+  | { kind: 'visible'; target: string; value: boolean }
+  | { kind: 'connect'; source: string; target: string; relation: string }
+  | { kind: 'disconnect'; source: string; target: string; relation?: string }
+  | { kind: 'styleRule'; rule: RuntimeStyleRule };
+
+/** Sink that captures the runtime-graph mutations performed by an event refinement. */
+export interface OverlayRecorder {
+  /** Returns a fresh stable id for a created element. */
+  nextRef(): string;
+  record(command: OverlayCommand): void;
+}
+
 /** Hooks injected into the API depending on the context (operation vs event refinement). */
 export interface CodeApiOptions {
   setContext?: (key: string, value: string) => void;
@@ -400,6 +427,11 @@ export interface CodeApiOptions {
   blockNavigation?: () => void;
   /** Base Style rules, used to style created elements by class/id. */
   styles?: StyleRuleData[];
+  /**
+   * When set, graph mutations are *recorded* (not applied live) so they can be
+   * persisted and replayed — used for event refinements.
+   */
+  recorder?: OverlayRecorder;
 }
 
 /**
@@ -437,6 +469,11 @@ export function buildCodeApi(
       node.control = resolved.control;
     }
   };
+  const rec = opts.recorder;
+  const idOf = (ref: RuntimeNode | string | undefined): string => {
+    const n = resolve(ref);
+    return n ? n.id : (typeof ref === 'string' ? ref : '');
+  };
   return {
     nodes: host.nodes,
     context,
@@ -444,16 +481,51 @@ export function buildCodeApi(
     byName: (name) => host.nodes.find((n) => n.name === name),
     byClass: (className) => host.nodes.filter((n) => n.className === className),
     byType: (type) => host.nodes.filter((n) => n.type === type),
-    setStyle: (node, cssProperty, value) => { if (node) { node.styles[cssProperty] = value; } },
-    setBackground: (node, color) => { if (node) { node.backgroundColor = color; } },
-    setFontSize: (node, px) => { if (node) { node.fontSize = px; } },
-    setName: (node, name) => { if (node) { node.name = name; } },
-    setClass: (node, className) => { if (node) { node.className = className; } },
-    hide: (node) => { if (node) { node.visible = false; } },
-    show: (node) => { if (node) { node.visible = true; } },
+    setStyle: (node, cssProperty, value) => {
+      if (rec) { rec.record({ kind: 'setStyle', target: idOf(node), prop: cssProperty, value }); }
+      else if (node) { node.styles[cssProperty] = value; }
+    },
+    setBackground: (node, color) => {
+      if (rec) { rec.record({ kind: 'setBackground', target: idOf(node), value: color }); }
+      else if (node) { node.backgroundColor = color; }
+    },
+    setFontSize: (node, px) => {
+      if (rec) { rec.record({ kind: 'setFontSize', target: idOf(node), value: px }); }
+      else if (node) { node.fontSize = px; }
+    },
+    setName: (node, name) => {
+      if (rec) { rec.record({ kind: 'setName', target: idOf(node), value: name }); }
+      else if (node) { node.name = name; }
+    },
+    setClass: (node, className) => {
+      if (rec) { rec.record({ kind: 'setClass', target: idOf(node), value: className }); }
+      else if (node) { node.className = className; }
+    },
+    hide: (node) => {
+      if (rec) { rec.record({ kind: 'visible', target: idOf(node), value: false }); }
+      else if (node) { node.visible = false; }
+    },
+    show: (node) => {
+      if (rec) { rec.record({ kind: 'visible', target: idOf(node), value: true }); }
+      else if (node) { node.visible = true; }
+    },
     createElement: (spec = {}) => {
+      if (rec) {
+        const ref = spec.id || rec.nextRef();
+        rec.record({
+          kind: 'create', ref, elType: spec.type || 'ViewComponent', className: spec.className || '',
+          name: spec.name || 'element', control: spec.control || '',
+          parent: spec.parent != null ? idOf(spec.parent) : null, props: spec.props,
+        });
+        // Return a stub so the handler can chain (e.g. use it as a parent).
+        return {
+          id: ref, name: spec.name || 'element', type: spec.type || 'ViewComponent', className: spec.className || '',
+          visible: spec.visible !== false, fontSize: DEFAULT_FONT_SIZE, backgroundColor: '',
+          control: spec.control || '', styles: {}, childStyles: {}, created: true,
+        };
+      }
       const node: RuntimeNode = {
-        id: genId('rt'),
+        id: spec.id || genId('rt'),
         name: spec.name || 'element',
         type: spec.type || 'ViewComponent',
         className: spec.className || '',
@@ -477,6 +549,7 @@ export function buildCodeApi(
       return node;
     },
     deleteElement: (ref) => {
+      if (rec) { rec.record({ kind: 'delete', target: idOf(ref) }); return; }
       const node = resolve(ref);
       if (!node) {
         return;
@@ -501,6 +574,7 @@ export function buildCodeApi(
       }
     },
     connect: (source, target, relation = 'navigatesTo') => {
+      if (rec) { rec.record({ kind: 'connect', source: idOf(source), target: idOf(target), relation }); return; }
       const s = resolve(source);
       const t = resolve(target);
       if (s && t) {
@@ -508,6 +582,7 @@ export function buildCodeApi(
       }
     },
     disconnect: (source, target, relation) => {
+      if (rec) { rec.record({ kind: 'disconnect', source: idOf(source), target: idOf(target), relation }); return; }
       const s = resolve(source);
       const t = resolve(target);
       if (!s || !t) {
@@ -521,6 +596,7 @@ export function buildCodeApi(
       }
     },
     createStyleRule: (rule) => {
+      if (rec) { rec.record({ kind: 'styleRule', rule }); return; }
       if (!rule || !rule.selector) {
         return;
       }
@@ -535,6 +611,42 @@ export function buildCodeApi(
     navigate: (target) => { if (opts.navigate) { opts.navigate(target); } },
     blockNavigation: () => { if (opts.blockNavigation) { opts.blockNavigation(); } },
   };
+}
+
+/**
+ * Replays a recorded runtime overlay (event-refinement mutations) onto a host,
+ * resolving element references by id. Lets event-driven graph changes persist
+ * across recomputes until the runtime is reset or the page reloads.
+ */
+export function applyOverlay(host: HostGraph, commands: OverlayCommand[], styles: StyleRuleData[] = []): void {
+  if (!commands || !commands.length) {
+    return;
+  }
+  const api = buildCodeApi(host, [], { styles });
+  const find = (ref: string): RuntimeNode | undefined => host.nodes.find((n) => n.id === ref);
+  for (const cmd of commands) {
+    try {
+      switch (cmd.kind) {
+        case 'create': {
+          const parent = cmd.parent ? find(cmd.parent) : undefined;
+          api.createElement({ id: cmd.ref, type: cmd.elType, className: cmd.className, name: cmd.name, control: cmd.control, parent, props: cmd.props });
+          break;
+        }
+        case 'delete': { const n = find(cmd.target); if (n) { api.deleteElement(n); } break; }
+        case 'setBackground': { const n = find(cmd.target); if (n) { api.setBackground(n, cmd.value); } break; }
+        case 'setFontSize': { const n = find(cmd.target); if (n) { api.setFontSize(n, cmd.value); } break; }
+        case 'setStyle': { const n = find(cmd.target); if (n) { api.setStyle(n, cmd.prop, cmd.value); } break; }
+        case 'setName': { const n = find(cmd.target); if (n) { api.setName(n, cmd.value); } break; }
+        case 'setClass': { const n = find(cmd.target); if (n) { api.setClass(n, cmd.value); } break; }
+        case 'visible': { const n = find(cmd.target); if (n) { if (cmd.value) { api.show(n); } else { api.hide(n); } } break; }
+        case 'connect': api.connect(cmd.source, cmd.target, cmd.relation); break;
+        case 'disconnect': api.disconnect(cmd.source, cmd.target, cmd.relation); break;
+        case 'styleRule': api.createStyleRule(cmd.rule); break;
+      }
+    } catch {
+      // A bad overlay command must not break rendering.
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

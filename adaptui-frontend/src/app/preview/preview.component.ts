@@ -10,7 +10,7 @@ import { ContextModelService } from '../services/context-model.service';
 import { IfmlModelService } from '../services/ifml-model.service';
 import { OperationModelService } from '../services/operation-model.service';
 import { StyleModelService } from '../services/style-model.service';
-import { buildCodeApi, buildHostGraph, buildRenderTree, CodeApi, CodeOperation, RenderNode, ruleFires, runAdaptation } from './adaptation-engine';
+import { applyOverlay, buildCodeApi, buildHostGraph, buildRenderTree, CodeApi, CodeOperation, OverlayCommand, RenderNode, ruleFires, runAdaptation } from './adaptation-engine';
 
 /**
  * Live preview of the adaptive UI. It renders the IFML model concretized by the
@@ -40,6 +40,23 @@ export class PreviewComponent implements OnInit, OnDestroy {
   private styleRules: StyleRuleData[] = [];
   private eventHandlers = new Map<string, (api: CodeApi) => void>();
 
+  /** Latest published inputs, kept so the view can be re-rendered on demand. */
+  private snapshot: {
+    elements: IfmlElementRef[]; flows: IfmlFlow[]; styles: StyleRuleData[];
+    ops: OperationModel[]; rules: AdaptmlRule[]; ctx: ContextProperty[]; codeOps: CodeOperation[];
+  } | null = null;
+
+  /**
+   * Persistent runtime overlay — the graph mutations made by event refinements,
+   * re-applied on every render so they survive recomputes. Cleared by the Reset
+   * button or a page reload (it lives only in memory).
+   */
+  private overlay: OverlayCommand[] = [];
+  private overlayCounter = 0;
+
+  /** True while a runtime overlay is in effect (enables the Reset button). */
+  hasRuntimeChanges = false;
+
   constructor(
     private ifmlService: IfmlModelService,
     private styleService: StyleModelService,
@@ -64,7 +81,8 @@ export class PreviewComponent implements OnInit, OnDestroy {
       ]).pipe(debounceTime(0)).subscribe((vals) => {
         const [elements, flows, styles, ops, rules, ctx, codeOps] = vals as
           [IfmlElementRef[], IfmlFlow[], StyleRuleData[], OperationModel[], AdaptmlRule[], ContextProperty[], CodeOperation[]];
-        this.recompute(elements, flows, styles, ops, rules, ctx, codeOps);
+        this.snapshot = { elements, flows, styles, ops, rules, ctx, codeOps };
+        this.render();
       })
     );
     this.subscriptions.add(
@@ -139,16 +157,22 @@ export class PreviewComponent implements OnInit, OnDestroy {
   onTrigger(node: RenderNode): void {
     const handler = this.eventHandlers.get(node.name);
     let blocked = false;
+    let mutated = false;
     if (handler) {
       const flat: RenderNode[] = [];
       const collect = (n: RenderNode) => { flat.push(n); n.children.forEach(collect); };
       this.views.forEach(collect);
+      const recorder = {
+        nextRef: () => `ov_${++this.overlayCounter}`,
+        record: (cmd: OverlayCommand) => { this.overlay.push(cmd); mutated = true; },
+      };
       try {
         handler(buildCodeApi({ nodes: flat, edges: [] }, this.contextProps, {
           setContext: (k, v) => this.contextService.setValue(k, v),
           navigate: (target) => this.navigateTo(target),
           blockNavigation: () => { blocked = true; },
           styles: this.styleRules,
+          recorder,
         }));
       } catch {
         // A faulty event refinement must not break interaction.
@@ -161,6 +185,11 @@ export class PreviewComponent implements OnInit, OnDestroy {
         this.activeViewId = flow.targetViewId;
       }
     }
+    // Reflect any recorded runtime mutations (setContext re-renders on its own).
+    if (mutated) {
+      this.hasRuntimeChanges = true;
+      this.render();
+    }
   }
 
   /** Switches the active view to the container with the given name or id. */
@@ -171,10 +200,20 @@ export class PreviewComponent implements OnInit, OnDestroy {
     }
   }
 
-  private recompute(
-    elements: IfmlElementRef[], flows: IfmlFlow[], styles: StyleRuleData[],
-    ops: OperationModel[], rules: AdaptmlRule[], ctx: ContextProperty[], codeOps: CodeOperation[],
-  ): void {
+  /** Discards all runtime changes made by event refinements (manual reset). */
+  resetRuntime(): void {
+    this.overlay = [];
+    this.overlayCounter = 0;
+    this.hasRuntimeChanges = false;
+    this.render();
+  }
+
+  /** Builds the view tree from the latest inputs: base → runtime overlay → adaptation. */
+  private render(): void {
+    if (!this.snapshot) {
+      return;
+    }
+    const { elements, flows, styles, ops, rules, ctx, codeOps } = this.snapshot;
     this.hasModel = elements.length > 0;
     this.activatedContext = ctx.filter((p) => p.activated);
     this.contextProps = ctx;
@@ -185,6 +224,9 @@ export class PreviewComponent implements OnInit, OnDestroy {
     this.firedCount = rules.filter((r) => ruleFires(r, ctxMap)).length;
 
     const base = buildHostGraph(elements, flows, styles);
+    // Persistent runtime overlay (event-refinement edits) becomes part of the model,
+    // then context-driven adaptation runs over the whole graph.
+    applyOverlay(base, this.overlay, styles);
     const host = runAdaptation(base, rules, ops, ctx, codeOps, styles);
     this.views = buildRenderTree(host);
 

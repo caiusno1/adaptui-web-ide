@@ -179,6 +179,15 @@ if (Number(api.context.time) < 20) {
   Feed: `// Refine the 'Feed' event with code.
 // Jump the clock to the evening — the ADAPTML rule then flips the app to dark mode.
 api.setContext('time', '22');`,
+  'New Post': `// Refine the 'New Post' event: add a runtime post to the feed.
+// These runtime changes persist across re-renders until the Preview's Reset
+// button (or a page reload). Click it a few times!
+var feed = api.byClass('feedgrid')[0];
+if (feed) {
+  var post = api.createElement({ type: 'ViewContainer', className: 'post', name: 'You', parent: feed });
+  api.createElement({ type: 'ViewComponent', className: 'author', name: 'You', parent: post });
+  api.createElement({ type: 'ViewComponent', className: 'postbody', name: 'A fresh post, added at ' + api.context.time + ':00 ✍️', parent: post });
+}`,
   'Log out': `// Refine the 'Log out' event: reset the clock to the morning (light mode).
 api.setContext('time', '9');`,
 };

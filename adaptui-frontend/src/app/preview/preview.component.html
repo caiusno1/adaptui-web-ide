@@ -32,6 +32,14 @@
           class="view-tab"
           [class.active]="v.id === activeViewId"
           (click)="setActiveView(v.id)">{{ v.name }}</button>
+        <span class="view-bar-spacer"></span>
+        <button
+          class="reset-btn"
+          [disabled]="!hasRuntimeChanges"
+          (click)="resetRuntime()"
+          matTooltip="Discard runtime changes made by event code (also cleared on reload)">
+          <mat-icon>restart_alt</mat-icon> Reset runtime
+        </button>
       </div>
       <div class="stage-inner" *ngIf="activeView as av">
         <ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: av }"></ng-container>

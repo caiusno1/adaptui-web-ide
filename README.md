@@ -475,6 +475,14 @@ if (Number(api.context.time) < 20) {
 }
 ```
 
+**Persistence.** The graph mutations an event refinement makes (`createElement`,
+`deleteElement`, `setStyle`, `createStyleRule`, …) are recorded into a **runtime
+overlay** that the Preview re-applies on every recompute — so they **persist** as you
+adapt the context, switch views, etc. The overlay lives only in memory: it is cleared
+by a **browser/tab reload** or the **Reset runtime** button in the Preview's view bar.
+(Context changes via `setContext` and navigation are not part of the overlay — they act
+through the context model and the active view.)
+
 Code runs in the browser via `new Function` — it's your own code in your own session
 (a prototyping facility), not a sandbox.
 
@@ -570,7 +578,9 @@ It also ships time-driven adaptations:
 - **Event refinements** (Code tab) — *Feed* jumps the clock to 22:00 (dark) and
   *Log out* to 09:00 (light); **Sign In** is handled in code: it `blockNavigation()`s
   the static flow and `navigate('News Feed')`s only during the day, so after 20:00
-  sign-in is blocked.
+  sign-in is blocked; **New Post** appends a runtime post to the feed that **persists**
+  (click it a few times, then change the time — the posts stay) until you press
+  **Reset runtime** or reload.
 
 Set the *Time* value in the Preview's Context side menu — or click the controls — to
 see the runtime graph and theme change live.

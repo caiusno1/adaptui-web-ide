@@ -908,8 +908,9 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
       const feedView = cont(parent, 'News Feed', 'appView', 460, 40, 560, 660);
       const menu = cont(feedView, 'Menu', 'menubar', 24, 46, 510, 70);
       comp(menu, 'SocialApp', 'brand', 16, 22, 150, 34);
-      const navFeed = evt(menu, 'Feed', 'navlink', 330, 26);
-      const navLogout = evt(menu, 'Log out', 'navlink', 430, 26);
+      const navFeed = evt(menu, 'Feed', 'navlink', 300, 26);
+      evt(menu, 'New Post', 'navlink', 370, 26);
+      const navLogout = evt(menu, 'Log out', 'navlink', 440, 26);
       const feed = cont(feedView, 'Feed', 'feedgrid', 24, 134, 510, 500);
       const post = (label: string, author: string, body: string, x: number, y: number) => {
         const p = cont(feed, label, 'post', x, y, 230, 200);
