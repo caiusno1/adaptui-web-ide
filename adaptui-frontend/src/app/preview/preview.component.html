@@ -62,7 +62,7 @@
     <input *ngSwitchCase="'inputField'" class="ctrl-input" [ngStyle]="nodeStyle(node)" [placeholder]="node.name" (change)="onTrigger(node)">
     <a *ngSwitchCase="'link'" class="ctrl-link" [ngStyle]="nodeStyle(node)" href="javascript:void(0)" (click)="onTrigger(node)">{{ node.name }}</a>
     <ng-container *ngSwitchDefault>
-      <div class="rt-head" *ngIf="!node.children.length || node.created">
+      <div class="rt-head" *ngIf="!node.children.length">
         <span class="rt-name">{{ node.name }}</span>
         <span class="rt-badge" *ngIf="node.created">new</span>
       </div>

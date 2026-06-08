@@ -37,6 +37,7 @@ export class PreviewComponent implements OnInit, OnDestroy {
 
   private subscriptions = new Subscription();
   private contextProps: ContextProperty[] = [];
+  private styleRules: StyleRuleData[] = [];
   private eventHandlers = new Map<string, (api: CodeApi) => void>();
 
   constructor(
@@ -137,19 +138,36 @@ export class PreviewComponent implements OnInit, OnDestroy {
    */
   onTrigger(node: RenderNode): void {
     const handler = this.eventHandlers.get(node.name);
+    let blocked = false;
     if (handler) {
       const flat: RenderNode[] = [];
       const collect = (n: RenderNode) => { flat.push(n); n.children.forEach(collect); };
       this.views.forEach(collect);
       try {
-        handler(buildCodeApi(flat, this.contextProps, (k, v) => this.contextService.setValue(k, v)));
+        handler(buildCodeApi({ nodes: flat, edges: [] }, this.contextProps, {
+          setContext: (k, v) => this.contextService.setValue(k, v),
+          navigate: (target) => this.navigateTo(target),
+          blockNavigation: () => { blocked = true; },
+          styles: this.styleRules,
+        }));
       } catch {
         // A faulty event refinement must not break interaction.
       }
     }
-    const flow = node.flows[0];
-    if (flow && flow.targetViewId && this.views.some((v) => v.id === flow.targetViewId)) {
-      this.activeViewId = flow.targetViewId;
+    // Unless the refinement blocked it, follow the event's normal navigation flow.
+    if (!blocked) {
+      const flow = node.flows[0];
+      if (flow && flow.targetViewId && this.views.some((v) => v.id === flow.targetViewId)) {
+        this.activeViewId = flow.targetViewId;
+      }
+    }
+  }
+
+  /** Switches the active view to the container with the given name or id. */
+  private navigateTo(target: string): void {
+    const view = this.views.find((v) => v.name === target || v.id === target);
+    if (view) {
+      this.activeViewId = view.id;
     }
   }
 
@@ -160,13 +178,14 @@ export class PreviewComponent implements OnInit, OnDestroy {
     this.hasModel = elements.length > 0;
     this.activatedContext = ctx.filter((p) => p.activated);
     this.contextProps = ctx;
+    this.styleRules = styles;
     this.ruleCount = rules.length;
 
     const ctxMap = new Map(ctx.map((p) => [p.key, p]));
     this.firedCount = rules.filter((r) => ruleFires(r, ctxMap)).length;
 
     const base = buildHostGraph(elements, flows, styles);
-    const host = runAdaptation(base, rules, ops, ctx, codeOps);
+    const host = runAdaptation(base, rules, ops, ctx, codeOps, styles);
     this.views = buildRenderTree(host);
 
     if (!this.views.some((v) => v.id === this.activeViewId)) {

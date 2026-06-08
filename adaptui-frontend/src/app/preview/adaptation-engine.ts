@@ -328,6 +328,28 @@ export function applyMatch(op: OperationModel, match: Map<string, string>, host:
 // Code operations (functions defined in the Code tab)
 // ---------------------------------------------------------------------------
 
+/** Spec for a runtime element created by code. */
+export interface CreateElementSpec {
+  name?: string;
+  /** 'ViewContainer' | 'ViewComponent' | 'Event'. Defaults to ViewComponent. */
+  type?: string;
+  className?: string;
+  control?: string;
+  /** Parent element (node, id or name) — adds a containment edge. */
+  parent?: RuntimeNode | string;
+  /** Explicit style props (catalog keys), applied on top of class/id styling. */
+  props?: Record<string, string>;
+  visible?: boolean;
+}
+
+/** A runtime-only style rule applied by code (does not touch the Style editor). */
+export interface RuntimeStyleRule {
+  selectorKind?: 'id' | 'class';
+  selector: string;
+  props?: Record<string, string>;
+  control?: string;
+}
+
 /** The sandbox-ish API handed to user code (operations and event refinements). */
 export interface CodeApi {
   /** Every runtime element (mutate fields directly, or use the helpers). */
@@ -339,14 +361,30 @@ export interface CodeApi {
   byName(name: string): RuntimeNode | undefined;
   byClass(className: string): RuntimeNode[];
   byType(type: string): RuntimeNode[];
-  /** Mutators. */
+  /** Change an existing element. */
   setStyle(node: RuntimeNode, cssProperty: string, value: string): void;
   setBackground(node: RuntimeNode, color: string): void;
   setFontSize(node: RuntimeNode, px: number): void;
+  setName(node: RuntimeNode, name: string): void;
+  setClass(node: RuntimeNode, className: string): void;
   hide(node: RuntimeNode): void;
   show(node: RuntimeNode): void;
-  /** Writes a context value (event refinements only; persists and re-adapts). */
+  /** Create a new runtime IFML element (optionally nested in a parent). */
+  createElement(spec?: CreateElementSpec): RuntimeNode | undefined;
+  /** Delete a runtime element (and everything it contains). */
+  deleteElement(node: RuntimeNode | string): void;
+  /** Add a relation edge (default `navigatesTo`) between two elements. */
+  connect(source: RuntimeNode | string, target: RuntimeNode | string, relation?: string): void;
+  /** Remove relation edge(s) between two elements. */
+  disconnect(source: RuntimeNode | string, target: RuntimeNode | string, relation?: string): void;
+  /** Create a runtime-only style rule, applied to the matching runtime elements. */
+  createStyleRule(rule: RuntimeStyleRule): void;
+  /** Writes a context value (event refinements; persists and re-adapts). */
   setContext(key: string, value: string): void;
+  /** Navigate the Preview to a container/view by name or id (event refinements). */
+  navigate(target: string): void;
+  /** Cancel the event's normal navigation flow to another ViewContainer (event refinements). */
+  blockNavigation(): void;
 }
 
 /** A code-defined operation: a name and the compiled function to run. */
@@ -355,29 +393,147 @@ export interface CodeOperation {
   run: (api: CodeApi) => void;
 }
 
-/** Builds the {@link CodeApi} over a set of runtime nodes for the given context. */
+/** Hooks injected into the API depending on the context (operation vs event refinement). */
+export interface CodeApiOptions {
+  setContext?: (key: string, value: string) => void;
+  navigate?: (target: string) => void;
+  blockNavigation?: () => void;
+  /** Base Style rules, used to style created elements by class/id. */
+  styles?: StyleRuleData[];
+}
+
+/**
+ * Builds the {@link CodeApi} over a host graph for the given context. The whole
+ * runtime graph (nodes + edges) is mutable: create / change / delete elements and
+ * relations, plus runtime-only style rules. In a code operation these changes feed
+ * the rendered tree; in an event refinement they are transient (use setContext /
+ * navigate / blockNavigation for persistent effects).
+ */
 export function buildCodeApi(
-  nodes: RuntimeNode[],
+  host: HostGraph,
   ctxProps: ContextProperty[],
-  setContext?: (key: string, value: string) => void,
+  opts: CodeApiOptions = {},
 ): CodeApi {
   const context: Record<string, string> = {};
   for (const p of ctxProps) {
     context[p.key] = p.value;
   }
+  const resolve = (ref: RuntimeNode | string | undefined): RuntimeNode | undefined => {
+    if (ref && typeof ref === 'object') {
+      return ref;
+    }
+    if (typeof ref === 'string') {
+      return host.nodes.find((n) => n.id === ref) || host.nodes.find((n) => n.name === ref);
+    }
+    return undefined;
+  };
+  const applyBaseStyle = (node: RuntimeNode): void => {
+    if (!opts.styles) {
+      return;
+    }
+    const resolved = resolveStyle({ cellId: node.id, name: node.name, type: node.type, className: node.className } as IfmlElementRef, opts.styles);
+    applyStyleProps(node, resolved.props);
+    if (resolved.control && !node.control) {
+      node.control = resolved.control;
+    }
+  };
   return {
-    nodes,
+    nodes: host.nodes,
     context,
-    byId: (name) => nodes.find((n) => n.name === name),
-    byName: (name) => nodes.find((n) => n.name === name),
-    byClass: (className) => nodes.filter((n) => n.className === className),
-    byType: (type) => nodes.filter((n) => n.type === type),
+    byId: (name) => host.nodes.find((n) => n.name === name),
+    byName: (name) => host.nodes.find((n) => n.name === name),
+    byClass: (className) => host.nodes.filter((n) => n.className === className),
+    byType: (type) => host.nodes.filter((n) => n.type === type),
     setStyle: (node, cssProperty, value) => { if (node) { node.styles[cssProperty] = value; } },
     setBackground: (node, color) => { if (node) { node.backgroundColor = color; } },
     setFontSize: (node, px) => { if (node) { node.fontSize = px; } },
+    setName: (node, name) => { if (node) { node.name = name; } },
+    setClass: (node, className) => { if (node) { node.className = className; } },
     hide: (node) => { if (node) { node.visible = false; } },
     show: (node) => { if (node) { node.visible = true; } },
-    setContext: (key, value) => { if (setContext) { setContext(key, value); } },
+    createElement: (spec = {}) => {
+      const node: RuntimeNode = {
+        id: genId('rt'),
+        name: spec.name || 'element',
+        type: spec.type || 'ViewComponent',
+        className: spec.className || '',
+        visible: spec.visible !== false,
+        fontSize: DEFAULT_FONT_SIZE,
+        backgroundColor: '',
+        control: spec.control || '',
+        styles: {},
+        childStyles: {},
+        created: true,
+      };
+      host.nodes.push(node);
+      const parent = spec.parent != null ? resolve(spec.parent) : undefined;
+      if (parent) {
+        host.edges.push({ id: genId('ce'), source: parent.id, target: node.id, relation: 'contains' });
+      }
+      applyBaseStyle(node);
+      if (spec.props) {
+        applyStyleProps(node, spec.props);
+      }
+      return node;
+    },
+    deleteElement: (ref) => {
+      const node = resolve(ref);
+      if (!node) {
+        return;
+      }
+      const remove = new Set<string>([node.id]);
+      let grew = true;
+      while (grew) {
+        grew = false;
+        for (const e of host.edges) {
+          if (e.relation === 'contains' && remove.has(e.source) && !remove.has(e.target)) {
+            remove.add(e.target);
+            grew = true;
+          }
+        }
+      }
+      for (let i = host.nodes.length - 1; i >= 0; i--) {
+        if (remove.has(host.nodes[i].id)) { host.nodes.splice(i, 1); }
+      }
+      for (let i = host.edges.length - 1; i >= 0; i--) {
+        const e = host.edges[i];
+        if (remove.has(e.source) || remove.has(e.target)) { host.edges.splice(i, 1); }
+      }
+    },
+    connect: (source, target, relation = 'navigatesTo') => {
+      const s = resolve(source);
+      const t = resolve(target);
+      if (s && t) {
+        host.edges.push({ id: genId('xe'), source: s.id, target: t.id, relation });
+      }
+    },
+    disconnect: (source, target, relation) => {
+      const s = resolve(source);
+      const t = resolve(target);
+      if (!s || !t) {
+        return;
+      }
+      for (let i = host.edges.length - 1; i >= 0; i--) {
+        const e = host.edges[i];
+        if (e.source === s.id && e.target === t.id && (!relation || e.relation === relation)) {
+          host.edges.splice(i, 1);
+        }
+      }
+    },
+    createStyleRule: (rule) => {
+      if (!rule || !rule.selector) {
+        return;
+      }
+      const kind = rule.selectorKind || 'class';
+      const matches = host.nodes.filter((n) => (kind === 'id' ? n.name === rule.selector : n.className === rule.selector));
+      for (const n of matches) {
+        if (rule.props) { applyStyleProps(n, rule.props); }
+        if (rule.control) { n.control = rule.control; }
+      }
+    },
+    setContext: (key, value) => { if (opts.setContext) { opts.setContext(key, value); } },
+    navigate: (target) => { if (opts.navigate) { opts.navigate(target); } },
+    blockNavigation: () => { if (opts.blockNavigation) { opts.blockNavigation(); } },
   };
 }
 
@@ -396,7 +552,7 @@ function clone(host: HostGraph): HostGraph {
  */
 export function runAdaptation(
   base: HostGraph, rules: AdaptmlRule[], ops: OperationModel[], ctxProps: ContextProperty[],
-  codeOps: CodeOperation[] = [],
+  codeOps: CodeOperation[] = [], styles: StyleRuleData[] = [],
 ): HostGraph {
   const host = clone(base);
   const ctx = new Map(ctxProps.map((p) => [p.key, p]));
@@ -409,11 +565,12 @@ export function runAdaptation(
     }
     const op = opByName.get(rule.operationName);
     if (!op) {
-      // Not a modelled operation — try a code operation of the same name.
+      // Not a modelled operation — try a code operation of the same name. Code
+      // operations may freely create / change / delete the runtime graph.
       const codeOp = codeByName.get(rule.operationName);
       if (codeOp) {
         try {
-          codeOp.run(buildCodeApi(host.nodes, ctxProps));
+          codeOp.run(buildCodeApi(host, ctxProps, { styles }));
         } catch {
           // A faulty code operation must not break the rest of the adaptation.
         }

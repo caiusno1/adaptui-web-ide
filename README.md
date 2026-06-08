@@ -432,17 +432,47 @@ function zebra(api) {
 }
 ```
 
-The `api` exposes `nodes`, `context`, lookups (`byId` / `byName` / `byClass` /
-`byType`) and mutators (`setBackground`, `setStyle`, `setFontSize`, `hide`, `show`).
-When a firing ADAPTML rule names a code operation, the Preview runs it over the host.
+The `api` can read and **fully reshape the runtime graph** (the IFML and Style editor
+models are never touched — only this preview's runtime copy):
 
-**Event refinements.** Pick an IFML event and attach code that runs when the event is
-triggered in the Preview. Here the `api` also offers `setContext(key, value)`, which
-persists and re-adapts — so an event can drive the rest of the model:
+- **Read** — `nodes`, `context`, `byId` / `byName` / `byClass` / `byType`.
+- **Change** — `setBackground`, `setStyle`, `setFontSize`, `setName`, `setClass`,
+  `hide`, `show`.
+- **Create** — `createElement({ type, className, name, parent, props })` adds a new
+  runtime IFML element (nested in a parent), `connect(a, b, relation?)` adds a relation
+  edge (e.g. a navigation flow).
+- **Delete** — `deleteElement(node)` (cascades to its contents), `disconnect(a, b)`.
+- **Style at runtime** — `createStyleRule({ selectorKind, selector, props })` applies a
+  style rule to the matching runtime elements only.
+
+When a firing ADAPTML rule names a code operation, the Preview runs it over the host.
+For example, this operation **iterates a list and creates new posts in the feed**:
 
 ```js
-// Refine the 'Feed' event: jump the clock to the evening -> the dark-mode rule fires.
-api.setContext('time', '22');
+function extraPosts(api) {
+  var feed = api.byClass('feedgrid')[0];
+  [{ who: 'AdaptUI Bot', text: 'Created from code 🤖' }].forEach(function (item) {
+    var post = api.createElement({ type: 'ViewContainer', className: 'post', name: item.who, parent: feed });
+    api.createElement({ type: 'ViewComponent', className: 'author', name: item.who, parent: post });
+    api.createElement({ type: 'ViewComponent', className: 'postbody', name: item.text, parent: post });
+  });
+  api.createStyleRule({ selectorKind: 'class', selector: 'post', props: { borderColor: '#6366f1', borderWidth: '2' } });
+}
+```
+
+**Event refinements.** Pick an IFML event and attach code that runs when the event is
+triggered in the Preview. Here the `api` also offers:
+
+- `setContext(key, value)` — persists and re-adapts, so an event can drive the model.
+- `navigate(container)` — switch the Preview to another container/view by name or id.
+- `blockNavigation()` — cancel the event's normal navigation flow to another container.
+
+```js
+// Refine the 'Sign In' event: navigation handled in code, not the static flow.
+api.blockNavigation();                 // cancel the normal flow to another container
+if (Number(api.context.time) < 20) {
+  api.navigate('News Feed');           // navigate to a container by code (daytime only)
+}
 ```
 
 Code runs in the browser via `new Function` — it's your own code in your own session
@@ -532,16 +562,18 @@ flex/grid layout, gradients, cards and controls, and the Preview's page-style ro
 
 It also ships time-driven adaptations:
 
-- **Daytime** (`Time` < 20) — a **code operation** `zebra` (defined in the Code tab)
-  stripes the post cards by index, showing a code function used as an operation.
+- **Daytime** (`Time` < 20) — two **code operations** (defined in the Code tab):
+  `zebra` stripes the post cards by index, and `extraPosts` **creates new runtime
+  posts** in the feed and adds a runtime-only accent border via `createStyleRule`.
 - **Evening** (`Time` ≥ 20) — two modelled operations (*Dark surfaces*, *Dark text*)
-  switch the whole app to a dark theme.
-- **Event refinements** (Code tab) — the *Feed* button jumps the clock to 22:00 (going
-  dark) and *Log out* resets it to 09:00 (going light), so triggering those events
-  re-adapts the UI via code.
+  switch the whole app to a dark theme (and the code-created posts disappear).
+- **Event refinements** (Code tab) — *Feed* jumps the clock to 22:00 (dark) and
+  *Log out* to 09:00 (light); **Sign In** is handled in code: it `blockNavigation()`s
+  the static flow and `navigate('News Feed')`s only during the day, so after 20:00
+  sign-in is blocked.
 
-Set the *Time* value in the Preview's Context side menu — or click *Feed* / *Log out* —
-to see day/night flip live.
+Set the *Time* value in the Preview's Context side menu — or click the controls — to
+see the runtime graph and theme change live.
 
 ---
 

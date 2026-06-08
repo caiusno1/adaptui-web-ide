@@ -235,10 +235,13 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     };
     model.beginUpdate();
     try {
-      // Daytime: a CODE operation (defined in the Code tab) stripes the post cards.
+      // Daytime: CODE operations (defined in the Code tab) stripe the post cards and
+      // create extra runtime posts in the feed.
       const condDay = add({ kind: 'condition', condition: { propertyKey: 'time', operator: '<', value: '20' } }, 'conditionStyle', 40, 40, 190, 90);
-      const zebra = add({ kind: 'operation', operation: { operationName: 'zebra' } }, 'operationStyle', 330, 50, 210, 72);
+      const zebra = add({ kind: 'operation', operation: { operationName: 'zebra' } }, 'operationStyle', 330, 30, 210, 72);
+      const extra = add({ kind: 'operation', operation: { operationName: 'extraPosts' } }, 'operationStyle', 330, 110, 210, 72);
       graph.insertEdge(parent, null, '', condDay, zebra);
+      graph.insertEdge(parent, null, '', condDay, extra);
 
       // Evening: modelled (graph) operations switch the app to a dark theme.
       const condNight = add({ kind: 'condition', condition: { propertyKey: 'time', operator: '>=', value: '20' } }, 'conditionStyle', 40, 200, 190, 90);
