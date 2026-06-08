@@ -1,8 +1,10 @@
 import { AfterViewInit, Component, ElementRef, NgZone, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
 import { AdaptationClass, IfmlElementRef } from '../model/adaptation.model';
+import { GraphSnapshot, GraphVertex } from '../model/project.model';
 import { IfmlFlow } from '../model/transformation.model';
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
+import { ProjectService } from '../services/project.service';
 
 // mxGraph is loaded as a global script (see angular.json -> scripts). These
 // declarations expose the parts of the library we use to the TypeScript
@@ -85,10 +87,14 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     { type: 'annotation', label: 'Annotation', icon: 'sticky_note_2', defaultLabel: 'ADAPTUI-ANNOTATION-STYLE=EDIT', width: 220, height: 70, style: 'generatorAnnotation' },
   ];
 
+  /** Suppresses cross-tab publishing while the canvas is rebuilt (load/reset). */
+  private loading = false;
+
   constructor(
     private zone: NgZone,
     private ifmlService: IfmlModelService,
     private classService: AdaptationClassService,
+    private projectService: ProjectService,
   ) { }
 
   ngOnInit(): void {
@@ -137,8 +143,110 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
       this.zone.run(() => this.onSelectionChanged());
     });
     graph.getModel().addListener(mxEvent.CHANGE, () => {
-      this.zone.run(() => this.publishElements());
+      if (!this.loading) {
+        this.zone.run(() => this.publishElements());
+      }
     });
+    this.publishElements();
+
+    this.projectService.register('ifml', {
+      capture: () => this.serialize(),
+      restore: (s) => this.deserialize(s as GraphSnapshot),
+      reset: () => this.resetGraph(),
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Project save / load (canvas + adaptation classes per cell)
+  // --------------------------------------------------------------------------
+
+  private serialize(): GraphSnapshot {
+    const model = this.graph.getModel();
+    const all: any[] = model.getDescendants(this.graph.getDefaultParent());
+    const root = this.graph.getDefaultParent();
+    const vertices: GraphVertex[] = [];
+    const edges = [];
+    for (const cell of all) {
+      if (model.isVertex(cell)) {
+        const g = cell.geometry || {};
+        const parent = model.getParent(cell);
+        const parentId = parent && parent !== root && model.isVertex(parent) ? parent.id : null;
+        vertices.push({
+          id: cell.id, parent: parentId,
+          x: g.x || 0, y: g.y || 0, w: g.width || 0, h: g.height || 0,
+          style: cell.style || '', value: cell.value || '', data: this.meta.get(cell.id) || '',
+        });
+      } else if (model.isEdge(cell)) {
+        const s = model.getTerminal(cell, true);
+        const t = model.getTerminal(cell, false);
+        if (s && t) {
+          edges.push({ source: s.id, target: t.id, style: cell.style || '', value: cell.value || '' });
+        }
+      }
+    }
+    return { vertices, edges };
+  }
+
+  private deserialize(snapshot: GraphSnapshot): void {
+    const graph = this.graph;
+    if (!graph || !snapshot) {
+      return;
+    }
+    const model = graph.getModel();
+    const root = graph.getDefaultParent();
+    this.loading = true;
+    model.beginUpdate();
+    try {
+      graph.removeCells(graph.getChildCells(root, true, true));
+      this.meta.clear();
+      const created = new Map<string, any>();
+      // Create vertices parents-first (a child waits until its parent exists).
+      const pending = [...(snapshot.vertices || [])];
+      let guard = pending.length * pending.length + 10;
+      while (pending.length && guard-- > 0) {
+        const v = pending.shift() as GraphVertex;
+        const parentCell = v.parent ? created.get(v.parent) : root;
+        if (v.parent && !parentCell) {
+          pending.push(v);
+          continue;
+        }
+        const cell = graph.insertVertex(parentCell, null, v.value, v.x, v.y, v.w, v.h, v.style);
+        const cls = typeof v.data === 'string' ? v.data : '';
+        if (cls) {
+          this.meta.set(cell.id, cls);
+        }
+        created.set(v.id, cell);
+      }
+      for (const e of snapshot.edges || []) {
+        const s = created.get(e.source);
+        const t = created.get(e.target);
+        if (s && t) {
+          graph.insertEdge(root, null, e.value, s, t, e.style);
+        }
+      }
+    } finally {
+      model.endUpdate();
+      this.loading = false;
+    }
+    this.selected = null;
+    this.publishElements();
+  }
+
+  private resetGraph(): void {
+    const graph = this.graph;
+    if (!graph) {
+      return;
+    }
+    this.loading = true;
+    graph.getModel().beginUpdate();
+    try {
+      graph.removeCells(graph.getChildCells(graph.getDefaultParent(), true, true));
+      this.meta.clear();
+    } finally {
+      graph.getModel().endUpdate();
+      this.loading = false;
+    }
+    this.selected = null;
     this.publishElements();
   }
 

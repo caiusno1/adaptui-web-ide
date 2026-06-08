@@ -2,11 +2,13 @@ import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, QueryL
 import { Subscription } from 'rxjs';
 
 import { AdaptationClass, IfmlElementRef } from '../model/adaptation.model';
+import { GraphSnapshot, GraphVertex } from '../model/project.model';
 import {
   CONTROL_TYPES, ControlType, STYLE_PROPERTIES, StylePropDef, StyleRuleData, StyleSelectorKind,
 } from '../model/transformation.model';
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
+import { ProjectService } from '../services/project.service';
 import { StyleModelService } from '../services/style-model.service';
 
 declare var mxGraph: any;
@@ -47,11 +49,14 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
   selectedCellId: string | null = null;
   selectedRule: StyleRuleData | null = null;
 
+  private loading = false;
+
   constructor(
     private zone: NgZone,
     private ifmlService: IfmlModelService,
     private classService: AdaptationClassService,
     private styleService: StyleModelService,
+    private projectService: ProjectService,
   ) { }
 
   ngOnInit(): void {
@@ -101,7 +106,9 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
       this.zone.run(() => this.onSelectionChanged());
     });
     graph.getModel().addListener(mxEvent.CHANGE, () => {
-      this.zone.run(() => this.publishRules());
+      if (!this.loading) {
+        this.zone.run(() => this.publishRules());
+      }
     });
 
     this.paletteButtons.toArray().forEach((btnRef) => {
@@ -109,6 +116,79 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
     });
 
     this.seedRules(graph);
+    this.publishRules();
+
+    this.projectService.register('style', {
+      capture: () => this.serialize(),
+      restore: (s) => this.deserialize(s as GraphSnapshot),
+      reset: () => this.resetGraph(),
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Project save / load (rule cells + their StyleRuleData)
+  // --------------------------------------------------------------------------
+
+  private serialize(): GraphSnapshot {
+    const model = this.graph.getModel();
+    const all: any[] = model.getDescendants(this.graph.getDefaultParent());
+    const vertices: GraphVertex[] = [];
+    for (const cell of all) {
+      const data = model.isVertex(cell) ? this.nodeData.get(cell.id) : null;
+      if (data) {
+        const g = cell.geometry || {};
+        vertices.push({
+          id: cell.id, x: g.x || 0, y: g.y || 0, w: g.width || 0, h: g.height || 0,
+          style: cell.style || 'styleRuleStyle', value: '', data: { ...data, props: { ...data.props } },
+        });
+      }
+    }
+    return { vertices, edges: [] };
+  }
+
+  private deserialize(snapshot: GraphSnapshot): void {
+    const graph = this.graph;
+    if (!graph || !snapshot) {
+      return;
+    }
+    const model = graph.getModel();
+    this.loading = true;
+    model.beginUpdate();
+    try {
+      graph.removeCells(graph.getChildCells(graph.getDefaultParent(), true, true));
+      this.nodeData.clear();
+      for (const v of snapshot.vertices || []) {
+        const data = v.data as StyleRuleData;
+        const cell = graph.insertVertex(graph.getDefaultParent(), null, '', v.x, v.y, v.w, v.h, v.style || 'styleRuleStyle');
+        this.nodeData.set(cell.id, { ...data, props: { ...(data.props || {}) } });
+        model.setValue(cell, this.labelFor(this.nodeData.get(cell.id) as StyleRuleData));
+        this.applyColor(cell, this.nodeData.get(cell.id) as StyleRuleData);
+      }
+    } finally {
+      model.endUpdate();
+      this.loading = false;
+    }
+    this.selectedRule = null;
+    this.selectedCellId = null;
+    this.publishRules();
+  }
+
+  private resetGraph(): void {
+    const graph = this.graph;
+    if (!graph) {
+      return;
+    }
+    this.loading = true;
+    graph.getModel().beginUpdate();
+    try {
+      graph.removeCells(graph.getChildCells(graph.getDefaultParent(), true, true));
+      this.nodeData.clear();
+    } finally {
+      graph.getModel().endUpdate();
+      this.loading = false;
+    }
+    this.selectedRule = null;
+    this.selectedCellId = null;
     this.publishRules();
   }
 

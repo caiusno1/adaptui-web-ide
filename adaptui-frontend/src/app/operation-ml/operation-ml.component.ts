@@ -9,6 +9,7 @@ import {
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
 import { OperationModelService } from '../services/operation-model.service';
+import { ProjectService } from '../services/project.service';
 
 declare var mxGraph: any;
 declare var mxUtils: any;
@@ -88,6 +89,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     private ifmlService: IfmlModelService,
     private classService: AdaptationClassService,
     private operationService: OperationModelService,
+    private projectService: ProjectService,
   ) { }
 
   ngOnInit(): void {
@@ -153,10 +155,53 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
+    this.projectService.register('operations', {
+      capture: () => this.serialize(),
+      restore: (s) => this.deserialize(s),
+      reset: () => this.resetOperations(),
+    });
+
     // Seed the dark-mode example operations. Deferred to the next macrotask so it
     // does not mutate bound state during the change detection pass that follows
     // ngAfterViewInit (avoids NG0100).
     setTimeout(() => this.seedOperations());
+  }
+
+  // --------------------------------------------------------------------------
+  // Project save / load (the full set of operations + visual node layout)
+  // --------------------------------------------------------------------------
+
+  private serialize(): { operations: OperationModel[]; currentOpId: string | null } {
+    this.saveCurrentOperation();
+    return { operations: this.operations.map((o) => JSON.parse(JSON.stringify(o))), currentOpId: this.currentOpId };
+  }
+
+  private deserialize(state: unknown): void {
+    const s = (state || {}) as { operations?: OperationModel[]; currentOpId?: string | null };
+    this.operations = (s.operations || []).map((o) => JSON.parse(JSON.stringify(o)));
+    // Keep the id counter ahead of any restored ids so new operations stay unique.
+    for (const op of this.operations) {
+      const n = parseInt(String(op.id).replace(/[^0-9]/g, ''), 10);
+      if (!Number.isNaN(n) && n > this.opCounter) {
+        this.opCounter = n;
+      }
+    }
+    const target = s.currentOpId && this.operations.some((o) => o.id === s.currentOpId)
+      ? s.currentOpId
+      : (this.operations[0] ? this.operations[0].id : null);
+    this.currentOpId = null;
+    if (target) {
+      this.loadOperation(target);
+    } else {
+      this.addOperation();
+    }
+    this.publishModels();
+  }
+
+  private resetOperations(): void {
+    this.operations = [];
+    this.currentOpId = null;
+    this.addOperation();
   }
 
   /**

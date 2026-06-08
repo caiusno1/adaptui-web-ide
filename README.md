@@ -15,12 +15,15 @@ in a live preview:
 | **ADAPTML** | Adaptation model | Rules linking context conditions (combined by AND/OR gates) to the operations that should run. |
 | **PREVIEW** | Runtime | Renders the IFML+Style model as a live UI and adapts it by applying the ADAPTML rules for the current context. |
 
-The first five tabs are **graphical editors** — diagram canvases (built on
+Most tabs are **graphical editors** — diagram canvases (built on
 [mxGraph](https://github.com/jgraph/mxgraph)) — and each exports its model to XML.
 The tabs share live state, forming a model pipeline: IFML elements (with their
 adaptation classes) and the context properties flow into the Style, Operations and
 ADAPTML editors; the operations you define are referenced by ADAPTML rules; and the
 **Preview** ties it all together at runtime.
+
+Everything across the tabs is a **project** that can be saved to and reopened from the
+browser — see [Projects](#projects).
 
 ---
 
@@ -120,12 +123,14 @@ adaptui-web-ide/
         ├── assets/               ← static assets (mxGraph images are copied here at build time)
         └── app/
             ├── app.module.ts     ← root module; registers components & Material modules
-            ├── app.component.*   ← shell: Material toolbar + the IFML / STYLE / CONTEXTML / OPERATIONS / ADAPTML / PREVIEW tabs
+            ├── app.component.*   ← shell: Material toolbar + project bar + the IFML / STYLE / CONTEXTML / OPERATIONS / CODE / ADAPTML / PREVIEW tabs
             ├── model/
             │   ├── adaptation.model.ts      ← adaptation classes, context, IFML refs, ADAPTML rule/configs
-            │   └── transformation.model.ts  ← Style DSL, Operation (LHS→RHS) patterns, runtime host graph
+            │   ├── transformation.model.ts  ← Style DSL, Operation (LHS→RHS) patterns, runtime host graph
+            │   └── project.model.ts         ← saved-project shape + editor-adapter / graph-snapshot interfaces
             ├── services/         ← cross-tab shared state (singletons, BehaviorSubject-backed)
             │   ├── adaptation-class.service.ts ← registry of adaptation classes & their properties
+            │   ├── project.service.ts          ← save/open/new projects (localStorage); coordinates editor adapters
             │   ├── context-model.service.ts    ← context properties: activation + current value
             │   ├── ifml-model.service.ts        ← IFML elements (with containment) + navigation flows
             │   ├── operation-model.service.ts   ← operations defined in the Operations editor (names + full models)
@@ -203,6 +208,30 @@ npm run build      # outputs to dist/adaptui-frontend
 cd adaptui-frontend
 npm test           # runs the Karma/Jasmine unit tests
 ```
+
+---
+
+## Projects
+
+A **project** is the complete contents of every tab — the IFML model, CONTEXTML
+context properties, Operations, Code, ADAPTML rules and the adaptation classes — plus
+the **visual structure** of the graphical editors (each node's position, size and
+style). The project bar above the tabs manages them:
+
+- **Save** — stores the current project under the name in the box, into the browser's
+  `localStorage`.
+- **New** — clears every tab to an empty project (default context + adaptation classes,
+  empty canvases and code).
+- **Open** — pick a saved project from the dropdown to load it into all tabs at once.
+- **Delete** — removes the saved project that matches the current name.
+
+Saving captures a JSON snapshot per editor (cells with geometry + metadata) so a
+reopened project comes back exactly as it looked, down to node positions. Because the
+Preview is fully derived from the other tabs, restoring them restores the running UI
+too. The whole thing is client-side — projects live in your browser, nothing is
+uploaded. Persistence is coordinated by
+[`ProjectService`](adaptui-frontend/src/app/services/project.service.ts); each
+graphical editor registers a small adapter (`capture` / `restore` / `reset`).
 
 ---
 

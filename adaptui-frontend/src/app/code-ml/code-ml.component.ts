@@ -38,7 +38,17 @@ export class CodeMlComponent implements OnInit, OnDestroy {
     this.functionsSource = this.codeService.functionsSource;
     this.subs.add(this.codeService.operationNames$.subscribe((n) => { this.opNames = n; }));
     this.subs.add(this.codeService.functionsError$.subscribe((e) => { this.functionsError = e; }));
-    this.subs.add(this.codeService.eventCode$.subscribe((rec) => { this.eventCode = rec; }));
+    // Keep the editors in sync when a project is opened / a new one started.
+    this.subs.add(this.codeService.functionsSource$.subscribe((src) => {
+      if (src !== this.functionsSource) { this.functionsSource = src; }
+    }));
+    this.subs.add(this.codeService.eventCode$.subscribe((rec) => {
+      this.eventCode = rec;
+      if (this.selectedEventName) {
+        const v = rec[this.selectedEventName] || '';
+        if (v !== this.eventCodeText) { this.eventCodeText = v; }
+      }
+    }));
     this.subs.add(this.ifmlService.elements$.pipe(debounceTime(0)).subscribe((els) => {
       this.events = els.filter((e) => e.type === 'Event');
       if (this.events.length && !this.events.some((e) => e.name === this.selectedEventName)) {

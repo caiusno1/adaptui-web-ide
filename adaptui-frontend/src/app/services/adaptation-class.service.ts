@@ -28,4 +28,18 @@ export class AdaptationClassService {
       this._classes.next([...this._classes.value, cls]);
     }
   }
+
+  // --- project save/load ---
+
+  getState(): AdaptationClass[] {
+    return this._classes.value.map((c) => ({ ...c, properties: [...c.properties] }));
+  }
+
+  setState(classes: AdaptationClass[]): void {
+    this._classes.next((classes || []).map((c) => ({ ...c, properties: [...(c.properties || [])] })));
+  }
+
+  reset(): void {
+    this.setState(DEFAULT_ADAPTATION_CLASSES.map((c) => ({ ...c, properties: [...c.properties] })));
+  }
 }
