@@ -14,6 +14,21 @@
   </button>
 </mat-toolbar>
 
+<div class="project-bar">
+  <span class="pb-title">Project</span>
+  <input class="pb-name" type="text" [(ngModel)]="projectName" placeholder="Project name" aria-label="Project name">
+  <button class="pb-btn" (click)="saveProject()">Save</button>
+  <button class="pb-btn" (click)="newProject()">New</button>
+  <span class="pb-spacer"></span>
+  <label class="pb-open">Open
+    <select class="pb-select" [(ngModel)]="selectedOpen" (ngModelChange)="openProject($event)">
+      <option value="">{{ savedNames.length ? 'Choose a saved project…' : 'No saved projects yet' }}</option>
+      <option *ngFor="let n of savedNames" [value]="n">{{ n }}</option>
+    </select>
+  </label>
+  <button class="pb-btn pb-del" *ngIf="savedNames.indexOf(projectName) >= 0" (click)="deleteProject(projectName)">Delete</button>
+</div>
+
 <mat-tab-group id="mainViewSelect">
   <mat-tab label="IFML"> <app-tiny-ifml></app-tiny-ifml> </mat-tab>
   <mat-tab label="STYLE"> <app-style-ml></app-style-ml> </mat-tab>

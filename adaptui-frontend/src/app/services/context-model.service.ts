@@ -39,6 +39,20 @@ export class ContextModelService {
     this._properties.next(this._properties.value.filter((p) => p.key !== key));
   }
 
+  // --- project save/load ---
+
+  getState(): ContextProperty[] {
+    return this._properties.value.map((p) => ({ ...p }));
+  }
+
+  setState(properties: ContextProperty[]): void {
+    this._properties.next((properties || []).map((p) => ({ ...p })));
+  }
+
+  reset(): void {
+    this.setState(DEFAULT_CONTEXT_PROPERTIES);
+  }
+
   /** Updates the current runtime value of a context property (Preview side menu). */
   setValue(key: string, value: string): void {
     this._properties.next(

@@ -6,10 +6,12 @@ import {
   AdaptmlRule, AdaptNodeData, BoolExpr, ConditionConfig, ContextProperty, ENUM_OPERATORS, GateOp,
   NUMBER_OPERATORS, OPERATOR_XML, OperationConfig,
 } from '../model/adaptation.model';
+import { GraphSnapshot, GraphVertex } from '../model/project.model';
 import { AdaptmlModelService } from '../services/adaptml-model.service';
 import { CodeModelService } from '../services/code-model.service';
 import { ContextModelService } from '../services/context-model.service';
 import { OperationModelService } from '../services/operation-model.service';
+import { ProjectService } from '../services/project.service';
 
 // mxGraph is loaded as a global browser script (see angular.json -> scripts).
 declare var mxGraph: any;
@@ -75,12 +77,15 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   selectedCellId: string | null = null;
   selectedData: AdaptNodeData | null = null;
 
+  private loading = false;
+
   constructor(
     private zone: NgZone,
     private contextService: ContextModelService,
     private operationService: OperationModelService,
     private adaptmlService: AdaptmlModelService,
     private codeService: CodeModelService,
+    private projectService: ProjectService,
   ) { }
 
   ngOnInit(): void {
@@ -122,8 +127,96 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     this.registerStyles(graph);
     this.registerDragSources(graph);
 
+    this.projectService.register('adaptml', {
+      capture: () => this.serialize(),
+      restore: (s) => this.deserialize(s as GraphSnapshot),
+      reset: () => this.resetGraph(),
+    });
+
     // Seed the dark-mode adaptation rule (deferred to avoid NG0100).
     setTimeout(() => this.seedExample());
+  }
+
+  // --------------------------------------------------------------------------
+  // Project save / load (condition/gate/operation cells + edges)
+  // --------------------------------------------------------------------------
+
+  private serialize(): GraphSnapshot {
+    const model = this.graph.getModel();
+    const all: any[] = model.getDescendants(this.graph.getDefaultParent());
+    const vertices: GraphVertex[] = [];
+    const edges = [];
+    for (const cell of all) {
+      if (model.isVertex(cell) && this.nodeData.has(cell.id)) {
+        const g = cell.geometry || {};
+        vertices.push({
+          id: cell.id, x: g.x || 0, y: g.y || 0, w: g.width || 0, h: g.height || 0,
+          style: cell.style || '', value: cell.value || '', data: this.nodeData.get(cell.id),
+        });
+      } else if (model.isEdge(cell)) {
+        const s = model.getTerminal(cell, true);
+        const t = model.getTerminal(cell, false);
+        if (s && t) {
+          edges.push({ source: s.id, target: t.id, style: cell.style || '', value: cell.value || '' });
+        }
+      }
+    }
+    return { vertices, edges };
+  }
+
+  private deserialize(snapshot: GraphSnapshot): void {
+    const graph = this.graph;
+    if (!graph || !snapshot) {
+      return;
+    }
+    const model = graph.getModel();
+    const root = graph.getDefaultParent();
+    this.loading = true;
+    model.beginUpdate();
+    try {
+      graph.removeCells(graph.getChildCells(root, true, true));
+      this.nodeData.clear();
+      const created = new Map<string, any>();
+      for (const v of snapshot.vertices || []) {
+        const data = v.data as AdaptNodeData;
+        const cell = graph.insertVertex(root, null, '', v.x, v.y, v.w, v.h, v.style);
+        this.nodeData.set(cell.id, data);
+        model.setValue(cell, this.labelFor(data));
+        created.set(v.id, cell);
+      }
+      for (const e of snapshot.edges || []) {
+        const s = created.get(e.source);
+        const t = created.get(e.target);
+        if (s && t) {
+          graph.insertEdge(root, null, e.value, s, t, e.style);
+        }
+      }
+    } finally {
+      model.endUpdate();
+      this.loading = false;
+    }
+    this.selectedCellId = null;
+    this.selectedData = null;
+    this.publishRules();
+  }
+
+  private resetGraph(): void {
+    const graph = this.graph;
+    if (!graph) {
+      return;
+    }
+    this.loading = true;
+    graph.getModel().beginUpdate();
+    try {
+      graph.removeCells(graph.getChildCells(graph.getDefaultParent(), true, true));
+      this.nodeData.clear();
+    } finally {
+      graph.getModel().endUpdate();
+      this.loading = false;
+    }
+    this.selectedCellId = null;
+    this.selectedData = null;
+    this.publishRules();
   }
 
   /** Seeds an adaptation rule: when the hour is >= 20, apply the dark-mode operations. */
@@ -194,7 +287,9 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     });
     // Publish the rules to the Preview whenever the model changes.
     graph.getModel().addListener(mxEvent.CHANGE, () => {
-      this.zone.run(() => this.publishRules());
+      if (!this.loading) {
+        this.zone.run(() => this.publishRules());
+      }
     });
   }
 

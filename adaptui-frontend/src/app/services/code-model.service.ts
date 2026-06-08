@@ -52,7 +52,30 @@ export class CodeModelService {
   setEventCode(eventName: string, code: string): void {
     this._eventCode.next({ ...this._eventCode.value, [eventName]: code });
   }
+
+  // --- project save/load ---
+
+  getState(): { functionsSource: string; eventCode: Record<string, string> } {
+    return { functionsSource: this._functionsSource.value, eventCode: { ...this._eventCode.value } };
+  }
+
+  setState(state: { functionsSource: string; eventCode: Record<string, string> }): void {
+    this._functionsSource.next((state && state.functionsSource) || '');
+    this._eventCode.next({ ...((state && state.eventCode) || {}) });
+  }
+
+  reset(): void {
+    this.setState({ functionsSource: NEW_PROJECT_FUNCTIONS, eventCode: {} });
+  }
 }
+
+const NEW_PROJECT_FUNCTIONS = `// Define operations as functions — each becomes an operation usable in ADAPTML.
+// The function receives an \`api\` to read context and change the live elements.
+//
+// function example(api) {
+//   api.byType('ViewContainer').forEach(c => api.setBackground(c, '#ffffff'));
+// }
+`;
 
 /** Finds the names of top-level `function name(...)` declarations in the source. */
 export function extractFunctionNames(src: string): string[] {
