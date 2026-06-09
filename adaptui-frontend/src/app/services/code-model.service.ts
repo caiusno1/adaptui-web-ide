@@ -160,6 +160,8 @@ function extraPosts(api) {
     { who: 'Release Bot', text: 'v3.0 is live — generated in the Code tab.' },
   ];
   items.forEach(function (item) {
+    // Idempotent: only create a bot post once (so the adaptation reaches a fixpoint).
+    if (api.byName(item.who)) { return; }
     var post = api.createElement({ type: 'ViewContainer', className: 'post', name: item.who, parent: feed });
     api.createElement({ type: 'ViewComponent', className: 'author', name: item.who, parent: post });
     api.createElement({ type: 'ViewComponent', className: 'postbody', name: item.text, parent: post });

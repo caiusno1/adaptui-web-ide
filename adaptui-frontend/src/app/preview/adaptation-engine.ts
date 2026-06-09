@@ -657,10 +657,24 @@ function clone(host: HostGraph): HostGraph {
   return { nodes: host.nodes.map((n) => ({ ...n })), edges: host.edges.map((e) => ({ ...e })) };
 }
 
+/** A stable signature of the host's relevant state, used to detect a fixpoint. */
+function hostSignature(host: HostGraph): string {
+  const nodes = host.nodes.map((n) =>
+    [n.id, n.name, n.type, n.className, n.visible, n.fontSize, n.backgroundColor, n.control,
+      JSON.stringify(n.styles), JSON.stringify(n.childStyles)].join('|'));
+  const edges = host.edges.map((e) => `${e.source}>${e.relation}>${e.target}`);
+  return `${nodes.join(';')}#${edges.join(';')}`;
+}
+
+/** Maximum adaptation passes before giving up (guards against non-terminating rules). */
+const MAX_ADAPTATION_PASSES = 50;
+
 /**
- * Applies every firing rule's operation to a copy of the base host graph. A rule's
- * operation is either a modelled (graph-transformation) operation or a code operation
- * defined in the Code tab — both are referenced by name.
+ * Applies the firing rules' operations to a copy of the base host graph, **repeatedly
+ * until no operation changes the graph any more** (a fixpoint) — so operations that
+ * enable one another all take effect regardless of rule order. Each operation is a
+ * modelled (graph-transformation) operation or a code operation; both are transient
+ * (re-derived every recompute) and referenced by name.
  */
 export function runAdaptation(
   base: HostGraph, rules: AdaptmlRule[], ops: OperationModel[], ctxProps: ContextProperty[],
@@ -671,43 +685,50 @@ export function runAdaptation(
   const opByName = new Map(ops.map((o) => [o.name, o]));
   const codeByName = new Map(codeOps.map((o) => [o.name, o]));
 
-  for (const rule of rules) {
-    if (!ruleFires(rule, ctx)) {
-      continue;
-    }
-    const op = opByName.get(rule.operationName);
-    if (!op) {
-      // Not a modelled operation — try a code operation of the same name. Code
-      // operations may freely create / change / delete the runtime graph.
-      const codeOp = codeByName.get(rule.operationName);
-      if (codeOp) {
-        try {
-          codeOp.run(buildCodeApi(host, ctxProps, { styles }));
-        } catch {
-          // A faulty code operation must not break the rest of the adaptation.
-        }
-      }
-      continue;
-    }
-    const matches = findMatches(op, host);
-    const deleted = new Set<string>();
-    for (const m of matches) {
-      let stale = false;
-      for (const hid of m.values()) {
-        if (deleted.has(hid)) { stale = true; break; }
-      }
-      if (stale) {
+  for (let pass = 0; pass < MAX_ADAPTATION_PASSES; pass++) {
+    const before = hostSignature(host);
+    for (const rule of rules) {
+      if (!ruleFires(rule, ctx)) {
         continue;
       }
-      applyMatch(op, m, host);
-      for (const pn of op.nodes) {
-        if (pn.data.role === 'delete') {
-          const hid = m.get(pn.id);
-          if (hid) {
-            deleted.add(hid);
+      const op = opByName.get(rule.operationName);
+      if (!op) {
+        // Not a modelled operation — try a code operation of the same name. Code
+        // operations may freely create / change / delete the runtime graph.
+        const codeOp = codeByName.get(rule.operationName);
+        if (codeOp) {
+          try {
+            codeOp.run(buildCodeApi(host, ctxProps, { styles }));
+          } catch {
+            // A faulty code operation must not break the rest of the adaptation.
+          }
+        }
+        continue;
+      }
+      const matches = findMatches(op, host);
+      const deleted = new Set<string>();
+      for (const m of matches) {
+        let stale = false;
+        for (const hid of m.values()) {
+          if (deleted.has(hid)) { stale = true; break; }
+        }
+        if (stale) {
+          continue;
+        }
+        applyMatch(op, m, host);
+        for (const pn of op.nodes) {
+          if (pn.data.role === 'delete') {
+            const hid = m.get(pn.id);
+            if (hid) {
+              deleted.add(hid);
+            }
           }
         }
       }
+    }
+    // Stop once a full pass leaves the graph unchanged (no rule was applicable).
+    if (hostSignature(host) === before) {
+      break;
     }
   }
   return host;

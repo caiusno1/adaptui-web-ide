@@ -85,12 +85,15 @@ The pieces compose like this:
   `age > 50`) to a **defined operation** (modelled *or* code). Conditions are combined
   by **«AND» / «OR» gate** nodes into a boolean expression; an operation fires **only**
   when its expression is satisfied (an operation with no conditions never fires).
-- **PREVIEW** runs the whole stack: it builds a runtime *host graph* from IFML
-  (concretized by Style), and for every ADAPTML rule whose condition expression holds
-  it applies the referenced operation — a modelled rewrite (match LHS, apply RHS) or a
-  **code operation** (run the function over the host). The result is rendered as a
-  navigable, page-style UI; triggering an event reroutes between views and runs the
-  event's **code refinement**. See the
+- **PREVIEW** runs the whole stack. On any change it rebuilds the runtime model from
+  scratch: it builds a *host graph* from IFML (concretized by Style), folds in the
+  **permanent runtime changes made by event refinements**, then **applies the
+  applicable adaptations repeatedly until none changes the graph any more** (a
+  fixpoint, so operations that enable one another all take effect). Each operation is
+  a modelled rewrite (match LHS, apply RHS) or a **code operation** (run the function
+  over the host); both are *transient* — re-derived on every recompute. The result is
+  rendered as a navigable, page-style UI; triggering an event reroutes between views
+  and runs the event's **code refinement**. See the
   [adaptation engine](adaptui-frontend/src/app/preview/adaptation-engine.ts).
 
 ---
@@ -475,13 +478,17 @@ if (Number(api.context.time) < 20) {
 }
 ```
 
-**Persistence.** The graph mutations an event refinement makes (`createElement`,
-`deleteElement`, `setStyle`, `createStyleRule`, …) are recorded into a **runtime
-overlay** that the Preview re-applies on every recompute — so they **persist** as you
-adapt the context, switch views, etc. The overlay lives only in memory: it is cleared
-by a **browser/tab reload** or the **Reset runtime** button in the Preview's view bar.
-(Context changes via `setContext` and navigation are not part of the overlay — they act
-through the context model and the active view.)
+**Persistence — event refinements are permanent, code operations are transient.**
+The graph mutations an event refinement makes (`createElement`, `deleteElement`,
+`setStyle`, `createStyleRule`, …) are recorded into a **runtime overlay** that becomes
+part of the rebuilt runtime model on every recompute — so they **persist** as you
+adapt the context, **switch ViewContainers and back**, etc. (they are the *changes done
+through the called events* that seed the runtime model). **Code operations**, by
+contrast, are adaptations: they are re-derived from scratch on every recompute and
+never accumulate. The overlay lives only in memory: it is cleared by a **browser/tab
+reload** or the **Reset runtime** button in the Preview's view bar. (Context changes
+via `setContext` and navigation are not part of the overlay — they act through the
+context model and the active view.)
 
 Code runs in the browser via `new Function` — it's your own code in your own session
 (a prototyping facility), not a sandbox.
