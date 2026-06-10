@@ -383,15 +383,23 @@ selected one as a single **LHS → RHS** rule:
 1. Add **Element** / **Style** pattern nodes and draw edges between them to match a
    sub-pattern of the IFML/Style model.
 2. For each node/edge pick a **role** — **«preserve»** (matched and kept),
-   **«create»** (added on the RHS) or **«delete»** (removed). Roles are colour-coded.
+   **«create»** (added on the RHS), **«delete»** (removed) or **«forbid»** (a
+   **negative application condition**). Roles are colour-coded.
 3. On preserve/create nodes, set what to apply on the RHS — *Visibility* plus **any
    style property** from the same catalog as the Style DSL (colours, gradients,
    borders, typography, layout, …). So an operation can change *any* element
    property, e.g. recolour surfaces and text for a dark theme.
 
+**Negative application conditions.** Tag a node (and the edges connecting it) as
+**«forbid»** to express a pattern that must be *absent*: the rule applies to a match
+only if the forbidden pattern cannot be found extending it. For example, *darken every
+`.card` that does **not** contain a `.pin`* — a preserve `.card` with a forbid `.pin`
+joined by a forbid `contains` edge. A lone forbid node means "applies only if no such
+element exists anywhere". (Forbid nodes are exported in a `<nac>` section.)
+
 A single pattern node matching by type/class applies to **every** matching element
 (e.g. `match: ViewContainer` recolours all containers), since the engine applies all
-matches of the rule.
+matches of the rule (repeatedly, to a fixpoint).
 
 **Export Operations XML** (`model.operations`) derives an explicit `<lhs>`/`<rhs>`
 from the roles, with one `<set>` per assigned property:
@@ -463,18 +471,38 @@ function extraPosts(api) {
 }
 ```
 
-**Event refinements.** Pick an IFML event and attach code that runs when the event is
+**Event refinements.** Pick an IFML event — a drawn one, or a **default lifecycle
+event** every ViewContainer has (see below) — and attach code that runs when it is
 triggered in the Preview. Here the `api` also offers:
 
 - `setContext(key, value)` — persists and re-adapts, so an event can drive the model.
 - `navigate(container)` — switch the Preview to another container/view by name or id.
 - `blockNavigation()` — cancel the event's normal navigation flow to another container.
+- `api.self` — the ViewContainer the event belongs to (its "self"), so a refinement can
+  change *its own* container (this is also why a self-reference flow, event → its own
+  ViewContainer, is allowed and simply re-runs the operations on trigger).
 
 ```js
 // Refine the 'Sign In' event: navigation handled in code, not the static flow.
 api.blockNavigation();                 // cancel the normal flow to another container
 if (Number(api.context.time) < 20) {
   api.navigate('News Feed');           // navigate to a container by code (daytime only)
+}
+```
+
+**Default lifecycle events.** Every ViewContainer automatically has `onLoad`,
+`onChange` and `onTerminate` events (listed in the Code tab as *`<Container> · onLoad`*
+etc.). The Preview fires them when the container becomes the active view (**onLoad**),
+when the context changes while it is shown (**onChange**), and when it is left
+(**onTerminate**) — and they are refinable like any event. Example — a welcome card
+pinned the first time the feed loads:
+
+```js
+// 'News Feed · onLoad'
+if (!api.byName('Welcome')) {
+  var feed = api.byClass('feedgrid')[0];
+  var post = api.createElement({ type: 'ViewContainer', className: 'post', name: 'Welcome', parent: feed });
+  api.createElement({ type: 'ViewComponent', className: 'postbody', name: 'Loaded ' + api.self.name, parent: post });
 }
 ```
 
@@ -588,6 +616,8 @@ It also ships time-driven adaptations:
   sign-in is blocked; **New Post** appends a runtime post to the feed that **persists**
   (click it a few times, then change the time — the posts stay) until you press
   **Reset runtime** or reload.
+- **Lifecycle event** (Code tab) — *News Feed · onLoad* pins a runtime **Welcome**
+  card the first time the feed is shown (using `api.self`).
 
 Set the *Time* value in the Preview's Context side menu — or click the controls — to
 see the runtime graph and theme change live.
@@ -598,8 +628,7 @@ see the runtime graph and theme change live.
 
 - Round-trip **import** of the exported XML back into the canvases.
 - Per-side spacing (individual margins/padding) and reusable style presets/themes in the Style DSL.
-- Make a self-targeting event carry real state (form input, toggles) so it visibly changes its own view.
-- Fuller graph-transformation support (negative application conditions, attribute conditions in the LHS).
+- Fuller graph-transformation support (attribute conditions in the LHS, multi-node NACs in the editor palette).
 - More IFML constructs (parameter bindings, data flows, actions, modules); persisting models server-side and code generation.
 
 ---

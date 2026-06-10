@@ -12,7 +12,7 @@
 
 import { AdaptmlRule, BoolExpr, ConditionConfig, ContextProperty, IfmlElementRef } from '../model/adaptation.model';
 import {
-  HostGraph, IfmlFlow, OperationModel, PatternNodeData, RuntimeEdge, RuntimeNode,
+  HostGraph, IfmlFlow, OperationModel, PatternNodeData, PatternRole, RuntimeEdge, RuntimeNode,
   STYLE_PROPERTIES, StyleRuleData,
 } from '../model/transformation.model';
 
@@ -179,11 +179,72 @@ function nodeMatches(p: PatternNodeData, h: RuntimeNode): boolean {
   return true;
 }
 
-/** Finds all injective matches of an operation's LHS pattern in the host. */
+/** A positive LHS node is matched and (preserve) kept or (delete) removed — not create/forbid. */
+function isPositive(role: PatternRole): boolean {
+  return role !== 'create' && role !== 'forbid';
+}
+
+/**
+ * A negative application condition is satisfied (violated) for a positive match when
+ * the operation's `forbid` pattern (forbidden nodes, and edges marked forbid or
+ * touching a forbidden node) can be found in the host extending that match.
+ */
+function nacViolated(op: OperationModel, posAssign: Map<string, string>, host: HostGraph): boolean {
+  const forbidNodes = op.nodes.filter((n) => n.data.role === 'forbid');
+  const forbidIds = new Set(forbidNodes.map((n) => n.id));
+  const scoped = (id: string) => posAssign.has(id) || forbidIds.has(id);
+  const nacEdges = op.edges.filter((e) =>
+    e.data.role !== 'create'
+    && (e.data.role === 'forbid' || forbidIds.has(e.source) || forbidIds.has(e.target))
+    && scoped(e.source) && scoped(e.target));
+  if (forbidNodes.length === 0 && nacEdges.length === 0) {
+    return false;
+  }
+  const hasEdge = (s: string, t: string, rel: string) =>
+    host.edges.some((e) => e.source === s && e.target === t && e.relation === rel);
+  const candidates = new Map<string, RuntimeNode[]>();
+  for (const fn of forbidNodes) {
+    candidates.set(fn.id, host.nodes.filter((hn) => nodeMatches(fn.data, hn)));
+  }
+  const used = new Set<string>(posAssign.values());
+  const fAssign = new Map<string, string>();
+  const edgesHold = () => nacEdges.every((e) => {
+    const s = posAssign.get(e.source) ?? fAssign.get(e.source);
+    const t = posAssign.get(e.target) ?? fAssign.get(e.target);
+    return !!s && !!t && hasEdge(s, t, e.data.relation);
+  });
+  let found = false;
+  const bt = (i: number): void => {
+    if (found) {
+      return;
+    }
+    if (i === forbidNodes.length) {
+      if (edgesHold()) { found = true; }
+      return;
+    }
+    for (const hn of candidates.get(forbidNodes[i].id) || []) {
+      if (used.has(hn.id)) {
+        continue;
+      }
+      fAssign.set(forbidNodes[i].id, hn.id);
+      used.add(hn.id);
+      bt(i + 1);
+      used.delete(hn.id);
+      fAssign.delete(forbidNodes[i].id);
+      if (found) {
+        return;
+      }
+    }
+  };
+  bt(0);
+  return found;
+}
+
+/** Finds all injective matches of an operation's LHS pattern (respecting NACs) in the host. */
 export function findMatches(op: OperationModel, host: HostGraph, limit = 100): Map<string, string>[] {
-  const lhsNodes = op.nodes.filter((n) => n.data.role !== 'create');
+  const lhsNodes = op.nodes.filter((n) => isPositive(n.data.role));
   const lhsIds = new Set(lhsNodes.map((n) => n.id));
-  const lhsEdges = op.edges.filter((e) => e.data.role !== 'create' && lhsIds.has(e.source) && lhsIds.has(e.target));
+  const lhsEdges = op.edges.filter((e) => isPositive(e.data.role) && lhsIds.has(e.source) && lhsIds.has(e.target));
 
   const candidates = new Map<string, RuntimeNode[]>();
   for (const ln of lhsNodes) {
@@ -208,6 +269,10 @@ export function findMatches(op: OperationModel, host: HostGraph, limit = 100): M
         if (!s || !t || !hasEdge(s, t, le.data.relation)) {
           return;
         }
+      }
+      // Reject the match if a negative application condition is present in the host.
+      if (nacViolated(op, assign, host)) {
+        return;
       }
       results.push(new Map(assign));
       return;
@@ -387,6 +452,8 @@ export interface CodeApi {
   navigate(target: string): void;
   /** Cancel the event's normal navigation flow to another ViewContainer (event refinements). */
   blockNavigation(): void;
+  /** The ViewContainer this event/refinement belongs to (its "self"), when known. */
+  self?: RuntimeNode;
 }
 
 /** A code-defined operation: a name and the compiled function to run. */
@@ -432,6 +499,8 @@ export interface CodeApiOptions {
    * persisted and replayed — used for event refinements.
    */
   recorder?: OverlayRecorder;
+  /** The ViewContainer the event/refinement belongs to (exposed as `api.self`). */
+  self?: RuntimeNode;
 }
 
 /**
@@ -610,6 +679,7 @@ export function buildCodeApi(
     setContext: (key, value) => { if (opts.setContext) { opts.setContext(key, value); } },
     navigate: (target) => { if (opts.navigate) { opts.navigate(target); } },
     blockNavigation: () => { if (opts.blockNavigation) { opts.blockNavigation(); } },
+    self: opts.self,
   };
 }
 

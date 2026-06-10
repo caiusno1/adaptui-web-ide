@@ -32,6 +32,7 @@ const ROLE_COLORS: { [role: string]: { stroke: string; fill: string } } = {
   preserve: { stroke: '#455a64', fill: '#eceff1' },
   create: { stroke: '#2e7d32', fill: '#e8f5e9' },
   delete: { stroke: '#c62828', fill: '#ffebee' },
+  forbid: { stroke: '#ef6c00', fill: '#fff3e0' },
 };
 
 /**
@@ -60,7 +61,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   ];
 
   // Option lists for the configuration panel.
-  readonly roles: PatternRole[] = ['preserve', 'create', 'delete'];
+  readonly roles: PatternRole[] = ['preserve', 'create', 'delete', 'forbid'];
   readonly matches: ElementMatch[] = ['any', 'ViewContainer', 'ViewComponent', 'Event'];
   readonly selectorKinds: PatternSelectorKind[] = ['none', 'class', 'id'];
   readonly relations = RELATION_KINDS;
@@ -482,7 +483,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   get showAssignments(): boolean {
-    return !!this.selectedNode && this.selectedNode.role !== 'delete';
+    return !!this.selectedNode && this.selectedNode.role !== 'delete' && this.selectedNode.role !== 'forbid';
   }
 
   onNodeSelectorKindChange(): void {
@@ -545,15 +546,15 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   // --------------------------------------------------------------------------
 
   private styleFor(data: PatternNodeData): string {
-    const c = ROLE_COLORS[data.role];
+    const c = ROLE_COLORS[data.role] || ROLE_COLORS['preserve'];
     const rounded = data.kind === 'style' ? 'rounded=1;' : 'rounded=0;';
-    const dashed = data.role === 'delete' ? 'dashed=1;' : '';
+    const dashed = data.role === 'delete' || data.role === 'forbid' ? 'dashed=1;' : '';
     return `shape=rectangle;${rounded}${dashed}fillColor=${c.fill};strokeColor=${c.stroke};strokeWidth=1.5;fontColor=#263238;fontSize=11;whiteSpace=wrap;`;
   }
 
   private edgeStyleFor(data: PatternEdgeData): string {
-    const c = ROLE_COLORS[data.role];
-    const dashed = data.role === 'delete' ? 'dashed=1;' : '';
+    const c = ROLE_COLORS[data.role] || ROLE_COLORS['preserve'];
+    const dashed = data.role === 'delete' || data.role === 'forbid' ? 'dashed=1;' : '';
     return `endArrow=classic;rounded=1;strokeColor=${c.stroke};${dashed}fontColor=#455a64;fontSize=10;labelBackgroundColor=#ffffff;`;
   }
 
@@ -590,8 +591,14 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     lines.push('<op:OperationModel xmlns:op="http://adaptui.org/operations/1.0" name="AdaptUI Operations">');
     for (const op of this.operations) {
       lines.push(`  <operation name="${this.esc(op.name)}">`);
-      this.appendSide(lines, op, 'lhs', (n) => n.data.role !== 'create', (e) => e.data.role !== 'create');
-      this.appendSide(lines, op, 'rhs', (n) => n.data.role !== 'delete', (e) => e.data.role !== 'delete');
+      // LHS = preserve + delete; RHS = preserve + create; NAC = forbid pattern.
+      this.appendSide(lines, op, 'lhs', (n) => n.data.role === 'preserve' || n.data.role === 'delete', (e) => e.data.role === 'preserve' || e.data.role === 'delete');
+      this.appendSide(lines, op, 'rhs', (n) => n.data.role === 'preserve' || n.data.role === 'create', (e) => e.data.role === 'preserve' || e.data.role === 'create');
+      const forbidIds = new Set(op.nodes.filter((n) => n.data.role === 'forbid').map((n) => n.id));
+      const nacEdge = (e: OpEdge) => e.data.role === 'forbid' || forbidIds.has(e.source) || forbidIds.has(e.target);
+      if (forbidIds.size > 0 || op.edges.some(nacEdge)) {
+        this.appendSide(lines, op, 'nac', (n) => n.data.role === 'forbid', nacEdge);
+      }
       lines.push('  </operation>');
     }
     lines.push('</op:OperationModel>');
@@ -599,7 +606,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private appendSide(
-    lines: string[], op: OperationModel, side: 'lhs' | 'rhs',
+    lines: string[], op: OperationModel, side: 'lhs' | 'rhs' | 'nac',
     keepNode: (n: OpNode) => boolean, keepEdge: (e: OpEdge) => boolean,
   ): void {
     lines.push(`    <${side}>`);

@@ -3,7 +3,7 @@ import { combineLatest, Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { AdaptmlRule, ContextProperty, IfmlElementRef } from '../model/adaptation.model';
-import { IfmlFlow, OperationModel, StyleRuleData } from '../model/transformation.model';
+import { IfmlFlow, lifecycleEventName, OperationModel, StyleRuleData } from '../model/transformation.model';
 import { AdaptmlModelService } from '../services/adaptml-model.service';
 import { CodeModelService } from '../services/code-model.service';
 import { ContextModelService } from '../services/context-model.service';
@@ -53,6 +53,8 @@ export class PreviewComponent implements OnInit, OnDestroy {
    */
   private overlay: OverlayCommand[] = [];
   private overlayCounter = 0;
+  /** Guards against lifecycle events re-firing each other / cascading. */
+  private firingLifecycle = false;
 
   /** True while a runtime overlay is in effect (enables the Reset button). */
   hasRuntimeChanges = false;
@@ -99,11 +101,97 @@ export class PreviewComponent implements OnInit, OnDestroy {
   }
 
   setActiveView(id: string): void {
-    this.activeViewId = id;
+    this.setActive(id);
   }
 
   onContextValue(key: string, value: string): void {
     this.contextService.setValue(key, value);
+    // A context change re-adapts the active view: fire its onChange lifecycle event.
+    const active = this.views.find((v) => v.id === this.activeViewId);
+    if (active) {
+      this.fireLifecycle(active, 'onChange');
+    }
+  }
+
+  /** Switches the active view, firing the leaving view's onTerminate and the new view's onLoad. */
+  private setActive(id: string | null): void {
+    if (id === this.activeViewId) {
+      return;
+    }
+    const prev = this.views.find((v) => v.id === this.activeViewId);
+    this.activeViewId = id;
+    const next = this.views.find((v) => v.id === id);
+    if (!this.firingLifecycle) {
+      if (prev) { this.fireLifecycle(prev, 'onTerminate'); }
+      if (next) { this.fireLifecycle(next, 'onLoad'); }
+    }
+  }
+
+  /** Fires a ViewContainer lifecycle event (onLoad/onChange/onTerminate) if it has a refinement. */
+  private fireLifecycle(view: RenderNode, kind: string): void {
+    const name = lifecycleEventName(view.name, kind);
+    if (this.firingLifecycle || !this.eventHandlers.has(name)) {
+      return;
+    }
+    this.firingLifecycle = true;
+    try {
+      const { mutated } = this.runRefinement(name, view);
+      if (mutated) {
+        this.render();
+      }
+    } finally {
+      this.firingLifecycle = false;
+    }
+  }
+
+  /** The nearest ancestor ViewContainer of a node (its "self"). */
+  private ownerContainer(target: RenderNode): RenderNode | undefined {
+    let result: RenderNode | undefined;
+    const walk = (node: RenderNode, ancestor: RenderNode | undefined): boolean => {
+      const here = node.type === 'ViewContainer' ? node : ancestor;
+      if (node === target) { result = here; return true; }
+      for (const c of node.children) { if (walk(c, here)) { return true; } }
+      return false;
+    };
+    for (const v of this.views) { if (walk(v, undefined)) { break; } }
+    return result;
+  }
+
+  private flatten(): RenderNode[] {
+    const flat: RenderNode[] = [];
+    const collect = (n: RenderNode) => { flat.push(n); n.children.forEach(collect); };
+    this.views.forEach(collect);
+    return flat;
+  }
+
+  /** Runs an event/lifecycle refinement, recording its graph mutations into the overlay. */
+  private runRefinement(name: string, self?: RenderNode): { blocked: boolean; mutated: boolean } {
+    const handler = this.eventHandlers.get(name);
+    let blocked = false;
+    let mutated = false;
+    if (!handler) {
+      return { blocked, mutated };
+    }
+    const recorder = {
+      nextRef: () => `ov_${++this.overlayCounter}`,
+      record: (cmd: OverlayCommand) => { this.overlay.push(cmd); mutated = true; },
+    };
+    try {
+      handler(buildCodeApi({ nodes: this.flatten(), edges: [] }, this.contextProps, {
+        setContext: (k, v) => this.contextService.setValue(k, v),
+        navigate: (target) => this.navigateTo(target),
+        blockNavigation: () => { blocked = true; },
+        styles: this.styleRules,
+        recorder,
+        self,
+      }));
+    } catch {
+      // A faulty refinement must not break interaction.
+    }
+    if (mutated) {
+      this.hasRuntimeChanges = true;
+    }
+    return { blocked, mutated };
   }
 
   /** The concrete control to render a node as (events default to a button). */
@@ -155,48 +243,24 @@ export class PreviewComponent implements OnInit, OnDestroy {
    * to the flow's target view (or re-renders in place when self-targeting).
    */
   onTrigger(node: RenderNode): void {
-    const handler = this.eventHandlers.get(node.name);
-    let blocked = false;
-    let mutated = false;
-    if (handler) {
-      const flat: RenderNode[] = [];
-      const collect = (n: RenderNode) => { flat.push(n); n.children.forEach(collect); };
-      this.views.forEach(collect);
-      const recorder = {
-        nextRef: () => `ov_${++this.overlayCounter}`,
-        record: (cmd: OverlayCommand) => { this.overlay.push(cmd); mutated = true; },
-      };
-      try {
-        handler(buildCodeApi({ nodes: flat, edges: [] }, this.contextProps, {
-          setContext: (k, v) => this.contextService.setValue(k, v),
-          navigate: (target) => this.navigateTo(target),
-          blockNavigation: () => { blocked = true; },
-          styles: this.styleRules,
-          recorder,
-        }));
-      } catch {
-        // A faulty event refinement must not break interaction.
-      }
-    }
+    const { blocked } = this.runRefinement(node.name, this.ownerContainer(node));
     // Unless the refinement blocked it, follow the event's normal navigation flow.
     if (!blocked) {
       const flow = node.flows[0];
       if (flow && flow.targetViewId && this.views.some((v) => v.id === flow.targetViewId)) {
-        this.activeViewId = flow.targetViewId;
+        this.setActive(flow.targetViewId);
       }
     }
-    // Reflect any recorded runtime mutations (setContext re-renders on its own).
-    if (mutated) {
-      this.hasRuntimeChanges = true;
-      this.render();
-    }
+    // Re-run adaptation over the (possibly mutated) runtime model. This also lets a
+    // self-reference flow (event -> its own ViewContainer) re-apply the operations.
+    this.render();
   }
 
   /** Switches the active view to the container with the given name or id. */
   private navigateTo(target: string): void {
     const view = this.views.find((v) => v.name === target || v.id === target);
     if (view) {
-      this.activeViewId = view.id;
+      this.setActive(view.id);
     }
   }
 
@@ -231,7 +295,8 @@ export class PreviewComponent implements OnInit, OnDestroy {
     this.views = buildRenderTree(host);
 
     if (!this.views.some((v) => v.id === this.activeViewId)) {
-      this.activeViewId = this.views.length ? this.views[0].id : null;
+      // First view to appear (or a replacement) loads → fires its onLoad.
+      this.setActive(this.views.length ? this.views[0].id : null);
     }
   }
 }

@@ -192,4 +192,12 @@ if (feed) {
 }`,
   'Log out': `// Refine the 'Log out' event: reset the clock to the morning (light mode).
 api.setContext('time', '9');`,
+  'News Feed · onLoad': `// Default lifecycle event: runs whenever the News Feed view is shown.
+// 'api.self' is the View Container the event belongs to. Pin a welcome card once.
+if (!api.byName('Welcome')) {
+  var feed = api.byClass('feedgrid')[0];
+  var post = api.createElement({ type: 'ViewContainer', className: 'post', name: 'Welcome', parent: feed });
+  api.createElement({ type: 'ViewComponent', className: 'author', name: 'Welcome 👋', parent: post });
+  api.createElement({ type: 'ViewComponent', className: 'postbody', name: 'Loaded ' + api.self.name + ' at ' + api.context.time + ':00', parent: post });
+}`,
 };

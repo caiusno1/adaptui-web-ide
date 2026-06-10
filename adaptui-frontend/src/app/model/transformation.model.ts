@@ -168,9 +168,23 @@ export interface StyleRuleData {
 /**
  * The role of a pattern node/edge inside a rule, in the unified single-graph
  * notation: `preserve` exists in both LHS and RHS, `delete` only in the LHS
- * (removed by the rule), `create` only in the RHS (added by the rule).
+ * (removed by the rule), `create` only in the RHS (added by the rule), and
+ * `forbid` is a **negative application condition** — the rule applies only if this
+ * pattern is *absent* from the host.
  */
-export type PatternRole = 'preserve' | 'create' | 'delete';
+export type PatternRole = 'preserve' | 'create' | 'delete' | 'forbid';
+
+/**
+ * Default lifecycle events every ViewContainer has. The Preview fires them when the
+ * container is shown (`onLoad`), re-adapts while shown (`onChange`) and is left
+ * (`onTerminate`); they are refinable with code in the Code tab, keyed by name.
+ */
+export const LIFECYCLE_EVENTS = ['onLoad', 'onChange', 'onTerminate'];
+
+/** The event-refinement key for a container's lifecycle event (e.g. `News Feed · onLoad`). */
+export function lifecycleEventName(container: string, kind: string): string {
+  return `${container} · ${kind}`;
+}
 
 export type PatternNodeKind = 'element' | 'style';
 export type ElementMatch = 'any' | 'ViewContainer' | 'ViewComponent' | 'Event';
