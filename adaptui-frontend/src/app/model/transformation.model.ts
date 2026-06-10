@@ -198,6 +198,13 @@ export interface PatternNodeData {
   match: ElementMatch;
   selectorKind: PatternSelectorKind;
   selector: string;
+  /**
+   * Multi-attribute LHS match conditions, keyed by `StylePropDef.key` (plus
+   * `visible`). **All** must hold for a host element to match (strict AND), on top
+   * of the type/selector. On a create node, having any condition turns it into a
+   * match-and-overwrite node (the conditions are the "preserved" attributes).
+   */
+  condProps: Record<string, string>;
   /** RHS assignment for element visibility ('' = leave unchanged). */
   setVisible: '' | 'true' | 'false';
   /**

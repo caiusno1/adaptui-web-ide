@@ -385,10 +385,21 @@ selected one as a single **LHS → RHS** rule:
 2. For each node/edge pick a **role** — **«preserve»** (matched and kept),
    **«create»** (added on the RHS), **«delete»** (removed) or **«forbid»** (a
    **negative application condition**). Roles are colour-coded.
-3. On preserve/create nodes, set what to apply on the RHS — *Visibility* plus **any
-   style property** from the same catalog as the Style DSL (colours, gradients,
-   borders, typography, layout, …). So an operation can change *any* element
-   property, e.g. recolour surfaces and text for a dark theme.
+3. On preserve/create nodes, give each attribute a value and a mode — **Set**
+   (overwrite on the RHS) or **Match** (a LHS condition). Available attributes are
+   *Visibility* plus **any style property** from the same catalog as the Style DSL
+   (colours, gradients, borders, typography, layout, …), so an operation can both
+   *match on* and *change* any element property.
+
+**Multi-attribute LHS conditions.** Switching an attribute to **Match** adds it to the
+node's match conditions. **All** of a node's conditions must hold (strict AND) on top
+of its type/selector for an element to match. The roles then combine with conditions:
+
+- **«create» with no conditions** → an *add-node*: it creates a brand-new IFML/Style
+  element with the given attributes (the default).
+- **«create» (or «preserve») with some attributes set to Match** → a node must be
+  *matched* whose Match attributes equal the given values; its other (Set) attributes
+  are then **overwritten** by the transformation.
 
 **Negative application conditions.** Tag a node (and the edges connecting it) as
 **«forbid»** to express a pattern that must be *absent*: the rule applies to a match
@@ -397,12 +408,13 @@ only if the forbidden pattern cannot be found extending it. For example, *darken
 joined by a forbid `contains` edge. A lone forbid node means "applies only if no such
 element exists anywhere". (Forbid nodes are exported in a `<nac>` section.)
 
-A single pattern node matching by type/class applies to **every** matching element
-(e.g. `match: ViewContainer` recolours all containers), since the engine applies all
-matches of the rule (repeatedly, to a fixpoint).
+A single pattern node matching by type/class/attributes applies to **every** matching
+element, and the engine applies all matches of every rule **repeatedly to a fixpoint**
+(so operations that enable one another all take effect); each concrete match is applied
+once per recompute, so add-nodes create exactly once.
 
-**Export Operations XML** (`model.operations`) derives an explicit `<lhs>`/`<rhs>`
-from the roles, with one `<set>` per assigned property:
+**Export Operations XML** (`model.operations`) derives an explicit `<lhs>`/`<rhs>` —
+LHS nodes carry `<cond>` attribute conditions, RHS nodes carry `<set>` assignments:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -628,7 +640,7 @@ see the runtime graph and theme change live.
 
 - Round-trip **import** of the exported XML back into the canvases.
 - Per-side spacing (individual margins/padding) and reusable style presets/themes in the Style DSL.
-- Fuller graph-transformation support (attribute conditions in the LHS, multi-node NACs in the editor palette).
+- Fuller graph-transformation support (attribute comparison operators in the LHS, multi-node NAC palette).
 - More IFML constructs (parameter bindings, data flows, actions, modules); persisting models server-side and code generation.
 
 ---

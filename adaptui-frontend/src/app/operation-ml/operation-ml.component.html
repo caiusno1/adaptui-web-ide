@@ -70,7 +70,7 @@
       </label>
 
       <ng-container *ngIf="showAssignments">
-        <div class="assign-head">Set on RHS</div>
+        <div class="assign-head">Attributes — <b>Match</b> (LHS condition, all must hold) or <b>Set</b> (overwrite on RHS)</div>
         <label class="field" *ngIf="n.kind === 'element'">
           <span>Visibility</span>
           <select [(ngModel)]="n.setVisible" (ngModelChange)="onNodeChange()">
@@ -81,16 +81,24 @@
         </label>
         <div class="style-group" *ngFor="let g of styleGroups">
           <h5 class="group-title">{{ g }}</h5>
-          <label class="field" *ngFor="let def of propsInGroup(g)" [ngSwitch]="def.input">
-            <span>{{ def.label }}</span>
+          <label class="field prop-field" *ngFor="let def of propsInGroup(g)" [ngSwitch]="def.input"
+                 [class.is-match]="nodePropMode(def) === 'match'">
+            <span class="prop-label">
+              {{ def.label }}
+              <select class="mode-sel" [ngModel]="nodePropMode(def)" (ngModelChange)="setNodePropMode(def, $event)"
+                      (click)="$event.preventDefault()" title="Match = LHS condition; Set = RHS overwrite">
+                <option value="set">set</option>
+                <option value="match">match</option>
+              </select>
+            </span>
             <span class="color-row" *ngSwitchCase="'color'">
               <input type="color" [ngModel]="propNodeValue(def)" (ngModelChange)="setNodeProp(def, $event)">
-              <input type="text" class="color-text" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" placeholder="unchanged">
+              <input type="text" class="color-text" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" placeholder="—">
             </span>
-            <input *ngSwitchCase="'number'" type="number" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" [placeholder]="def.placeholder || 'unchanged'">
-            <input *ngSwitchCase="'text'" type="text" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" [placeholder]="def.placeholder || 'unchanged'">
+            <input *ngSwitchCase="'number'" type="number" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" [placeholder]="def.placeholder || '—'">
+            <input *ngSwitchCase="'text'" type="text" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" [placeholder]="def.placeholder || '—'">
             <select *ngSwitchCase="'select'" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)">
-              <option value="">— unchanged —</option>
+              <option value="">—</option>
               <option *ngFor="let o of def.options" [value]="o.value">{{ o.label }}</option>
             </select>
           </label>

@@ -166,6 +166,53 @@ export function ruleFires(rule: AdaptmlRule, ctx: Map<string, ContextProperty>):
 // Subgraph matching (LHS)
 // ---------------------------------------------------------------------------
 
+/** Reads a host node's attribute by catalog key (so it can be matched in the LHS). */
+function attrOf(node: RuntimeNode, key: string): string {
+  switch (key) {
+    case 'visible': return node.visible ? 'true' : 'false';
+    case 'backgroundColor': return node.backgroundColor || '';
+    case 'fontSize': return String(node.fontSize);
+    case 'control': return node.control || '';
+    case 'className': return node.className || '';
+    case 'name': return node.name || '';
+    default: {
+      const def = STYLE_PROPERTIES.find((d) => d.key === key);
+      if (!def) { return ''; }
+      const map = def.target === 'children' ? node.childStyles : node.styles;
+      return map[def.css] != null ? String(map[def.css]) : '';
+    }
+  }
+}
+
+/** Normalises a condition value to the host's stored form (applies the catalog unit). */
+function condExpected(key: string, raw: string): string {
+  if (key === 'visible' || key === 'backgroundColor' || key === 'fontSize' || key === 'control' || key === 'className' || key === 'name') {
+    return raw;
+  }
+  const def = STYLE_PROPERTIES.find((d) => d.key === key);
+  return def && def.unit ? raw + def.unit : raw;
+}
+
+/** True if the pattern node carries at least one attribute condition. */
+function hasConditions(d: PatternNodeData): boolean {
+  return !!d.condProps && Object.keys(d.condProps).some((k) => d.condProps[k] !== '' && d.condProps[k] != null);
+}
+
+/** Nodes that participate in matching: preserve, delete, or a create node with conditions. */
+function isMatchNode(d: PatternNodeData): boolean {
+  return d.role === 'preserve' || d.role === 'delete' || (d.role === 'create' && hasConditions(d));
+}
+
+/** Nodes that match and then overwrite their non-condition attributes (preserve + create-with-conditions). */
+function isModifyNode(d: PatternNodeData): boolean {
+  return d.role === 'preserve' || (d.role === 'create' && hasConditions(d));
+}
+
+/** A pure add node: a create node with no conditions creates a brand-new element. */
+function isCreateNode(d: PatternNodeData): boolean {
+  return d.role === 'create' && !hasConditions(d);
+}
+
 function nodeMatches(p: PatternNodeData, h: RuntimeNode): boolean {
   if (p.kind === 'element' && p.match !== 'any' && h.type !== p.match) {
     return false;
@@ -175,6 +222,15 @@ function nodeMatches(p: PatternNodeData, h: RuntimeNode): boolean {
   }
   if (p.selectorKind === 'id' && h.name !== p.selector) {
     return false;
+  }
+  // Multi-attribute conditions: every one must hold (strict AND).
+  if (p.condProps) {
+    for (const key of Object.keys(p.condProps)) {
+      const v = p.condProps[key];
+      if (v !== '' && v != null && attrOf(h, key) !== condExpected(key, v)) {
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -242,7 +298,7 @@ function nacViolated(op: OperationModel, posAssign: Map<string, string>, host: H
 
 /** Finds all injective matches of an operation's LHS pattern (respecting NACs) in the host. */
 export function findMatches(op: OperationModel, host: HostGraph, limit = 100): Map<string, string>[] {
-  const lhsNodes = op.nodes.filter((n) => isPositive(n.data.role));
+  const lhsNodes = op.nodes.filter((n) => isMatchNode(n.data));
   const lhsIds = new Set(lhsNodes.map((n) => n.id));
   const lhsEdges = op.edges.filter((e) => isPositive(e.data.role) && lhsIds.has(e.source) && lhsIds.has(e.target));
 
@@ -292,6 +348,9 @@ export function findMatches(op: OperationModel, host: HostGraph, limit = 100): M
 
   if (lhsNodes.length > 0) {
     backtrack(0);
+  } else if (!nacViolated(op, new Map(), host)) {
+    // An operation with no positive LHS (e.g. a pure add-node) applies once, unless a NAC forbids it.
+    results.push(new Map());
   }
   return results;
 }
@@ -322,9 +381,11 @@ function createdType(d: PatternNodeData): string {
 export function applyMatch(op: OperationModel, match: Map<string, string>, host: HostGraph): void {
   const nodeById = new Map(host.nodes.map((n) => [n.id, n] as const));
 
-  // 1. Preserve: apply RHS assignments to the matched node.
+  // 1. Match-and-overwrite: apply assignments to the matched node. This covers
+  //    «preserve» nodes and «create» nodes that carry conditions (the conditions are
+  //    the preserved attributes; all other set attributes overwrite the match).
   for (const pn of op.nodes) {
-    if (pn.data.role === 'preserve') {
+    if (isModifyNode(pn.data)) {
       const hid = match.get(pn.id);
       const hn = hid ? nodeById.get(hid) : undefined;
       if (hn) {
@@ -333,9 +394,9 @@ export function applyMatch(op: OperationModel, match: Map<string, string>, host:
     }
   }
 
-  // 2. Create new nodes (mapped so create edges can reference them).
+  // 2. Create new elements for add-nodes with no conditions.
   for (const pn of op.nodes) {
-    if (pn.data.role === 'create') {
+    if (isCreateNode(pn.data)) {
       const node: RuntimeNode = {
         id: genId('rt'),
         name: pn.data.selector || 'created',
@@ -754,6 +815,11 @@ export function runAdaptation(
   const ctx = new Map(ctxProps.map((p) => [p.key, p]));
   const opByName = new Map(ops.map((o) => [o.name, o]));
   const codeByName = new Map(codeOps.map((o) => [o.name, o]));
+  // Each concrete (operation, match) is applied at most once per recompute — so the
+  // fixpoint re-applies rules to *newly created* matches without re-creating elements.
+  const applied = new Set<string>();
+  const sig = (opId: string, m: Map<string, string>) =>
+    `${opId}#${[...m.entries()].map(([k, v]) => `${k}=${v}`).sort().join(',')}`;
 
   for (let pass = 0; pass < MAX_ADAPTATION_PASSES; pass++) {
     const before = hostSignature(host);
@@ -778,6 +844,10 @@ export function runAdaptation(
       const matches = findMatches(op, host);
       const deleted = new Set<string>();
       for (const m of matches) {
+        const key = sig(op.id, m);
+        if (applied.has(key)) {
+          continue;
+        }
         let stale = false;
         for (const hid of m.values()) {
           if (deleted.has(hid)) { stale = true; break; }
@@ -785,6 +855,7 @@ export function runAdaptation(
         if (stale) {
           continue;
         }
+        applied.add(key);
         applyMatch(op, m, host);
         for (const pn of op.nodes) {
           if (pn.data.role === 'delete') {
