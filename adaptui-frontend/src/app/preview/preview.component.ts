@@ -35,6 +35,11 @@ export class PreviewComponent implements OnInit, OnDestroy {
   firedCount = 0;
   hasModel = false;
 
+  /** Full-screen "app" mode (renders just the UI, no AdaptUI chrome). */
+  fullscreen = false;
+  /** Whether the in-app settings menu is open in full-screen mode. */
+  fsMenuOpen = false;
+
   private subscriptions = new Subscription();
   private contextProps: ContextProperty[] = [];
   private styleRules: StyleRuleData[] = [];
@@ -270,6 +275,18 @@ export class PreviewComponent implements OnInit, OnDestroy {
     this.overlayCounter = 0;
     this.hasRuntimeChanges = false;
     this.render();
+  }
+
+  /** Runs the app full-screen (no AdaptUI editor chrome). */
+  enterFullscreen(): void {
+    this.fullscreen = true;
+    this.fsMenuOpen = false;
+  }
+
+  /** Leaves full-screen "app" mode. */
+  exitFullscreen(): void {
+    this.fullscreen = false;
+    this.fsMenuOpen = false;
   }
 
   /** Builds the view tree from the latest inputs: base → runtime overlay → adaptation. */

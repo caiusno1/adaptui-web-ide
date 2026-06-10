@@ -596,6 +596,10 @@ runtime**:
    operation's graph transformation is applied to a runtime copy of the IFML graph
    (changing visibility or any style property, creating/deleting nodes/edges). The
    status line shows how many rules are currently applied.
+5. **Full-screen** — the *Fullscreen* button runs the app on its own, covering the
+   whole window with no AdaptUI editor chrome (as if it were the deployed app, not a
+   browser full-screen). A floating ⚙ control opens an in-app menu to **edit the
+   context properties**, **reset** the runtime and **exit** full-screen.
 
 The matching-and-rewriting logic lives in a small, dependency-free module,
 [`adaptation-engine.ts`](adaptui-frontend/src/app/preview/adaptation-engine.ts).
