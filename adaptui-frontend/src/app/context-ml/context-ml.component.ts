@@ -4,6 +4,7 @@ import { ContextProperty } from '../model/adaptation.model';
 import { ContextModelService } from '../services/context-model.service';
 
 @Component({
+  standalone: false,
   selector: 'app-context-ml',
   templateUrl: './context-ml.component.html',
   styleUrls: ['./context-ml.component.sass']

@@ -43,6 +43,7 @@ const ROLE_COLORS: { [role: string]: { stroke: string; fill: string } } = {
  * applied on the right-hand side. Operations are published by name for ADAPTML.
  */
 @Component({
+  standalone: false,
   selector: 'app-operation-ml',
   templateUrl: './operation-ml.component.html',
   styleUrls: ['./operation-ml.component.sass'],

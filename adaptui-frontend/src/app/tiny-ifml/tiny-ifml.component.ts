@@ -49,6 +49,7 @@ export interface IfmlPaletteItem {
 }
 
 @Component({
+  standalone: false,
   selector: 'app-tiny-ifml',
   templateUrl: './tiny-ifml.component.html',
   styleUrls: ['./tiny-ifml.component.sass']

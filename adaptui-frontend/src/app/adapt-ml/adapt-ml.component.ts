@@ -43,6 +43,7 @@ interface AdaptPaletteItem {
  * plus its incoming conditions forms an adaptation rule, exportable as XML.
  */
 @Component({
+  standalone: false,
   selector: 'app-adapt-ml',
   templateUrl: './adapt-ml.component.html',
   styleUrls: ['./adapt-ml.component.sass'],

@@ -20,6 +20,7 @@ import { applyOverlay, buildCodeApi, buildHostGraph, buildRenderTree, CodeApi, C
  * control (button / input / checkbox) reroutes navigation to the flow's target view.
  */
 @Component({
+  standalone: false,
   selector: 'app-preview',
   templateUrl: './preview.component.html',
   styleUrls: ['./preview.component.sass'],

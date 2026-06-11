@@ -13,6 +13,7 @@ import { IfmlModelService } from '../services/ifml-model.service';
  * (run when the event is triggered in the Preview).
  */
 @Component({
+  standalone: false,
   selector: 'app-code',
   templateUrl: './code-ml.component.html',
   styleUrls: ['./code-ml.component.sass'],

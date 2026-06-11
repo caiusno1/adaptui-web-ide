@@ -100,8 +100,8 @@ The pieces compose like this:
 
 ## Tech stack
 
-- **Angular 12** (`@angular/*` 12.2) + **TypeScript 4.3**
-- **Angular Material 12** for the shell (toolbar, tabs, buttons, tooltips, checkboxes)
+- **Angular 20** (`@angular/*` 20.x) + **TypeScript 5.9**, built with the esbuild-based `@angular/build:application` builder
+- **Angular Material 20** for the shell (toolbar, tabs, buttons, tooltips, checkboxes)
 - **[mxGraph](https://github.com/jgraph/mxgraph) 4.2** for the diagramming canvas, loaded as a global browser script
 - **SASS** (indented syntax) for component styles
 - **Karma + Jasmine** for unit tests
@@ -169,7 +169,7 @@ mxGraph ships as plain browser JavaScript, not an ES module, so it is loaded as 
 
 ### Prerequisites
 
-- **Node.js** (the project targets the Angular 12 toolchain)
+- **Node.js 20.19+ or 22.12+** (required by the Angular 20 toolchain)
 - **npm**
 
 ### Install
@@ -179,8 +179,12 @@ cd adaptui-frontend
 npm install
 ```
 
-> If `npm install` reports peer-dependency conflicts on a newer npm, use
-> `npm install --legacy-peer-deps`.
+> **Dependencies & security:** the dependency tree is current (Angular 20) and
+> `npm audit` is clean apart from a single known **moderate** advisory in
+> **mxGraph** (`GHSA-j4rv-pr9g-q8jv`, XSS in `setTooltips`). mxGraph is no longer
+> maintained upstream and has no fix available; it is tracked separately, and a
+> future move to [`@maxgraph/core`](https://github.com/maxGraph/maxGraph) would
+> clear it.
 
 ### Run the dev server
 
@@ -191,12 +195,8 @@ npm start          # = ng serve
 
 Then open <http://localhost:4200/>. The app reloads on source changes.
 
-> **Node 17+ note:** the Angular 12 build uses an older webpack that trips on
-> modern OpenSSL. If you see an `ERR_OSSL_EVP_UNSUPPORTED` error, run with the
-> legacy provider:
-> ```bash
-> NODE_OPTIONS=--openssl-legacy-provider npm start
-> ```
+> The Angular 20 toolchain runs on modern Node/OpenSSL out of the box — the old
+> `NODE_OPTIONS=--openssl-legacy-provider` workaround is no longer required.
 
 ### Build
 

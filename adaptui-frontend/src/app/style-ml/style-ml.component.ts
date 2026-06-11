@@ -26,6 +26,7 @@ declare var mxKeyHandler: any;
  * background colour) to IFML elements selected by id or adaptation class.
  */
 @Component({
+  standalone: false,
   selector: 'app-style-ml',
   templateUrl: './style-ml.component.html',
   styleUrls: ['./style-ml.component.sass'],

@@ -4,15 +4,14 @@ The Angular application for the **AdaptUI 3.0 Web IDE**. For an overview of the
 project, its architecture and the IFML editor, see the
 [top-level README](../README.md).
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 12.2.7.
+This project is built on **Angular 20** with the esbuild-based `@angular/build:application` builder.
 
 ## Development server
 
 Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The app will automatically reload if you change any of the source files.
 
-> **Node 17+:** if the build fails with `ERR_OSSL_EVP_UNSUPPORTED`, start the
-> tooling with `NODE_OPTIONS=--openssl-legacy-provider` (e.g.
-> `NODE_OPTIONS=--openssl-legacy-provider ng serve`).
+> Requires **Node.js 20.19+ or 22.12+** (the Angular 20 toolchain). The old
+> `NODE_OPTIONS=--openssl-legacy-provider` workaround is no longer needed.
 
 ## Code scaffolding
 
