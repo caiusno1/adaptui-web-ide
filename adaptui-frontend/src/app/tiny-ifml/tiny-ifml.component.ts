@@ -5,27 +5,13 @@ import { IfmlFlow } from '../model/transformation.model';
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
 import { ProjectService } from '../services/project.service';
-
-// mxGraph is loaded as a global script (see angular.json -> scripts). These
-// declarations expose the parts of the library we use to the TypeScript
-// compiler. The library itself is untyped here, hence `any`.
-declare var mxGraph: any;
-declare var mxPoint: any;
-declare var mxUtils: any;
-declare var mxRubberband: any;
-declare var mxConstants: any;
-declare var mxCylinder: any;
-declare var mxCellRenderer: any;
-declare var mxClient: any;
-declare var mxGraphModel: any;
-declare var mxEvent: any;
-declare var mxConnectionHandler: any;
-declare var mxImage: any;
-declare var mxKeyHandler: any;
-declare var mxCell: any;
-declare var mxGeometry: any;
-declare var mxPerimeter: any;
-declare var mxEdgeStyle: any;
+// Graph primitives come from the build-selected backend: maxGraph by default,
+// or the legacy global mxGraph via the `mxgraph` build flag. The separation
+// layer (../graph/graph-backend) exposes one uniform mxGraph-style surface.
+import {
+  mxGraph, mxGraphModel, mxClient, mxEvent, mxRubberband, mxKeyHandler,
+  mxConstants, mxPerimeter, mxEdgeStyle, mxUtils, cellStyleName, registerBoxShape,
+} from '../graph/graph-backend';
 
 /**
  * Describes a draggable/clickable element in the IFML palette and links it to
@@ -175,13 +161,13 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
         vertices.push({
           id: cell.id, parent: parentId,
           x: g.x || 0, y: g.y || 0, w: g.width || 0, h: g.height || 0,
-          style: cell.style || '', value: cell.value || '', data: this.meta.get(cell.id) || '',
+          style: cellStyleName(cell), value: cell.value || '', data: this.meta.get(cell.id) || '',
         });
       } else if (model.isEdge(cell)) {
         const s = model.getTerminal(cell, true);
         const t = model.getTerminal(cell, false);
         if (s && t) {
-          edges.push({ source: s.id, target: t.id, style: cell.style || '', value: cell.value || '' });
+          edges.push({ source: s.id, target: t.id, style: cellStyleName(cell), value: cell.value || '' });
         }
       }
     }
@@ -372,46 +358,18 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     keyHandler.bindKey(46, () => this.deleteSelected()); // Delete
     keyHandler.bindKey(8, () => this.deleteSelected());  // Backspace
 
-    // New connections are created as navigation flows.
-    const self = this;
-    const baseCreateEdge = graph.createEdge.bind(graph);
-    graph.createEdge = function (parent: any, id: any, value: any, source: any, target: any, style: any) {
-      return baseCreateEdge(parent, id, value != null ? value : '', source, target, style || 'navigationFlowStyle');
-    };
-
-    // Only let users start a flow from a view element or an event, and never
-    // from / to an annotation. Keeps the produced IFML model meaningful.
-    graph.isValidSource = function (cell: any) {
-      return cell != null && !self.isAnnotation(cell) && mxGraph.prototype.isValidSource.apply(this, [cell]);
-    };
-    graph.isValidTarget = function (cell: any) {
-      return cell != null && !self.isAnnotation(cell);
-    };
+    // Only let users start / end a flow on a view element or event, never an
+    // annotation. Kept backend-agnostic: no reliance on the library's base
+    // isValidSource (whose signature differs between mxGraph and maxGraph).
+    // New connections still adopt the navigation-flow look via the default edge
+    // style set in registerStyles().
+    graph.isValidSource = (cell: any) => cell != null && !this.isAnnotation(cell);
+    graph.isValidTarget = (cell: any) => cell != null && !this.isAnnotation(cell);
   }
 
   /** Registers the custom "box" shape used for view containers (title bar). */
   private registerShapes(): void {
-    if (mxCellRenderer.defaultShapes && mxCellRenderer.defaultShapes['box']) {
-      return; // already registered (e.g. when the view is re-created)
-    }
-
-    function BoxShape(this: any) {
-      mxCylinder.call(this);
-    }
-    mxUtils.extend(BoxShape, mxCylinder);
-    BoxShape.prototype.extrude = 10;
-    BoxShape.prototype.redrawPath = function (path: any, x: any, y: any, w: number, h: number) {
-      path.moveTo(0, 0);
-      path.lineTo(w, 0);
-      path.lineTo(w, 0.12 * h);
-      path.lineTo(0, 0.12 * h);
-      path.moveTo(w, 0);
-      path.lineTo(w, h);
-      path.lineTo(0, h);
-      path.lineTo(0, 0);
-      path.close();
-    };
-    mxCellRenderer.registerShape('box', BoxShape);
+    registerBoxShape();
   }
 
   /** Registers the named cell styles for every IFML element type. */
@@ -635,7 +593,7 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
   // --------------------------------------------------------------------------
 
   private styleOf(cell: any): string {
-    return (cell && typeof cell.style === 'string') ? cell.style : '';
+    return cellStyleName(cell);
   }
 
   private isViewContainer(cell: any): boolean {

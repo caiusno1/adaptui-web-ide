@@ -11,14 +11,12 @@ import { IfmlModelService } from '../services/ifml-model.service';
 import { OperationModelService } from '../services/operation-model.service';
 import { ProjectService } from '../services/project.service';
 
-declare var mxGraph: any;
-declare var mxUtils: any;
-declare var mxRubberband: any;
-declare var mxConstants: any;
-declare var mxClient: any;
-declare var mxGraphModel: any;
-declare var mxEvent: any;
-declare var mxKeyHandler: any;
+// Graph primitives via the build-selected backend: maxGraph by default, or the
+// legacy global mxGraph via the `mxgraph` build flag. See ../graph/graph-backend.
+import {
+  mxGraph, mxGraphModel, mxClient, mxEvent, mxRubberband, mxKeyHandler,
+  mxConstants, mxUtils,
+} from '../graph/graph-backend';
 
 interface OpPaletteItem {
   kind: PatternNodeKind;

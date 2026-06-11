@@ -33,17 +33,14 @@
             "inlineStyleLanguage": "sass",
             "assets": [
               { "glob": "**/*", "input": "src/assets/", "output": "/assets/" },
-              { "glob": "favicon.ico", "input": "src", "output": "/" },
-              { "glob": "**/*", "input": "node_modules/mxgraph/javascript/src", "output": "/assets/mxgraph" }
+              { "glob": "favicon.ico", "input": "src", "output": "/" }
             ],
             "styles": [
               "@angular/material/prebuilt-themes/azure-blue.css",
+              "node_modules/@maxgraph/core/css/common.css",
               "src/styles.sass"
             ],
-            "scripts": [
-              "src/config/mxgraph-config.js",
-              "node_modules/mxgraph/javascript/mxClient.js"
-            ]
+            "scripts": []
           },
           "configurations": {
             "production": {
@@ -57,6 +54,27 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "mxgraph": {
+              "fileReplacements": [
+                {
+                  "replace": "src/app/graph/graph-backend.ts",
+                  "with": "src/app/graph/graph-backend.mxgraph.ts"
+                }
+              ],
+              "assets": [
+                { "glob": "**/*", "input": "src/assets/", "output": "/assets/" },
+                { "glob": "favicon.ico", "input": "src", "output": "/" },
+                { "glob": "**/*", "input": "node_modules/mxgraph/javascript/src", "output": "/assets/mxgraph" }
+              ],
+              "styles": [
+                "@angular/material/prebuilt-themes/azure-blue.css",
+                "src/styles.sass"
+              ],
+              "scripts": [
+                "src/config/mxgraph-config.js",
+                "node_modules/mxgraph/javascript/mxClient.js"
+              ]
             }
           },
           "defaultConfiguration": "production"
@@ -69,6 +87,12 @@
             },
             "development": {
               "buildTarget": "adaptui-frontend:build:development"
+            },
+            "mxgraph": {
+              "buildTarget": "adaptui-frontend:build:development,mxgraph"
+            },
+            "mxgraph-production": {
+              "buildTarget": "adaptui-frontend:build:production,mxgraph"
             }
           },
           "defaultConfiguration": "development"
@@ -84,17 +108,14 @@
             "inlineStyleLanguage": "sass",
             "assets": [
               { "glob": "**/*", "input": "src/assets/", "output": "/assets/" },
-              { "glob": "favicon.ico", "input": "src", "output": "/" },
-              { "glob": "**/*", "input": "node_modules/mxgraph/javascript/src", "output": "/assets/mxgraph" }
+              { "glob": "favicon.ico", "input": "src", "output": "/" }
             ],
             "styles": [
               "@angular/material/prebuilt-themes/azure-blue.css",
+              "node_modules/@maxgraph/core/css/common.css",
               "src/styles.sass"
             ],
-            "scripts": [
-              "src/config/mxgraph-config.js",
-              "node_modules/mxgraph/javascript/mxClient.js"
-            ]
+            "scripts": []
           }
         }
       }

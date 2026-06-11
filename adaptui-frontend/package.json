@@ -4,7 +4,10 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
+    "start:mxgraph": "ng serve --configuration mxgraph",
     "build": "ng build",
+    "build:maxgraph": "ng build",
+    "build:mxgraph": "ng build --configuration production,mxgraph",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
@@ -19,6 +22,7 @@
     "@angular/material": "^20.2.0",
     "@angular/platform-browser": "^20.3.0",
     "@angular/router": "^20.3.0",
+    "@maxgraph/core": "^0.23.0",
     "mxgraph": "^4.2.2",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",

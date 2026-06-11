@@ -102,7 +102,7 @@ The pieces compose like this:
 
 - **Angular 20** (`@angular/*` 20.x) + **TypeScript 5.9**, built with the esbuild-based `@angular/build:application` builder
 - **Angular Material 20** for the shell (toolbar, tabs, buttons, tooltips, checkboxes)
-- **[mxGraph](https://github.com/jgraph/mxgraph) 4.2** for the diagramming canvas, loaded as a global browser script
+- **[maxGraph](https://github.com/maxGraph/maxGraph) 0.23** for the diagramming canvases (the maintained TypeScript successor to mxGraph) — or legacy **[mxGraph](https://github.com/jgraph/mxgraph) 4.2** via a build flag, behind a shared separation layer
 - **SASS** (indented syntax) for component styles
 - **Karma + Jasmine** for unit tests
 
@@ -115,7 +115,7 @@ adaptui-web-ide/
 ├── LICENSE
 ├── README.md                     ← you are here
 └── adaptui-frontend/             ← the Angular application
-    ├── angular.json              ← build/serve/test config; bundles mxGraph as a global script
+    ├── angular.json              ← build/serve/test config; selects the graph backend (maxGraph default, mxGraph via flag)
     ├── package.json
     └── src/
         ├── index.html
@@ -123,10 +123,13 @@ adaptui-web-ide/
         ├── styles.sass           ← global styles
         ├── config/
         │   └── mxgraph-config.js ← sets mxBasePath = "assets/mxgraph"
-        ├── assets/               ← static assets (mxGraph images are copied here at build time)
+        ├── assets/               ← static assets (mxGraph images are copied here for the mxGraph build)
         └── app/
             ├── app.module.ts     ← root module; registers components & Material modules
             ├── app.component.*   ← shell: Material toolbar + project bar + the IFML / STYLE / CONTEXTML / OPERATIONS / CODE / ADAPTML / PREVIEW tabs
+            ├── graph/            ← ★ graph-library separation layer (see below)
+            │   ├── graph-backend.ts          ← maxGraph backend (default)
+            │   └── graph-backend.mxgraph.ts  ← legacy mxGraph backend (built via the `mxgraph` flag)
             ├── model/
             │   ├── adaptation.model.ts      ← adaptation classes, context, IFML refs, ADAPTML rule/configs
             │   ├── transformation.model.ts  ← Style DSL, Operation (LHS→RHS) patterns, runtime host graph
@@ -151,17 +154,36 @@ adaptui-web-ide/
                 └── preview.component.*   ← context side menu + rendered, self-adapting UI
 ```
 
-### How mxGraph is wired in
+### Graph editor backends (maxGraph / mxGraph)
 
-mxGraph ships as plain browser JavaScript, not an ES module, so it is loaded as a
-**global script** rather than imported:
+The four graphical editors (IFML / Style / Operations / ADAPTML) do not depend on a
+specific graph library directly. They import every graph primitive from a single
+**separation layer**, `src/app/graph/graph-backend`, which is provided by one of two
+interchangeable backends selected **at build time**:
 
-- `angular.json` lists `src/config/mxgraph-config.js` and
-  `node_modules/mxgraph/javascript/mxClient.js` under `scripts`, and copies the
-  mxGraph `src` folder to `assets/mxgraph` so the library can find its images.
-- `src/config/mxgraph-config.js` sets `mxBasePath = "assets/mxgraph"`.
-- Components declare the globals they use (`declare var mxGraph: any;`, etc.) at the
-  top of the TypeScript file.
+- **maxGraph** (`@maxgraph/core`) — the **default**; the maintained TypeScript
+  successor to mxGraph, imported as an ES module (`graph-backend.ts`).
+- **mxGraph** (`mxgraph` 4.2) — the legacy library, loaded as a global browser
+  script (`graph-backend.mxgraph.ts`). It is swapped in by the `mxgraph` build
+  configuration via `fileReplacements`, which also adds `src/config/mxgraph-config.js`
+  + `node_modules/mxgraph/javascript/mxClient.js` under `scripts` and copies the
+  mxGraph `src` folder to `assets/mxgraph` (where `mxgraph-config.js` points
+  `mxBasePath`).
+
+The maxGraph backend re-exposes the same `mx*` symbol surface the editors expect and
+smooths over the API differences (string style names vs `CellStyle`, `getModel()` vs
+`getDataModel()`, model helpers that moved onto `Cell`, shape registration, …), so a
+single editor codebase runs unchanged on either library.
+
+Build / run with a specific backend:
+
+| | maxGraph (default) | mxGraph |
+| --- | --- | --- |
+| dev server | `npm start` | `npm run start:mxgraph` |
+| production build | `npm run build` | `npm run build:mxgraph` |
+
+> Only the optional mxGraph build pulls in the unmaintained `mxgraph` package (and
+> its one known advisory); the default maxGraph build ships neither.
 
 ---
 
@@ -179,12 +201,11 @@ cd adaptui-frontend
 npm install
 ```
 
-> **Dependencies & security:** the dependency tree is current (Angular 20) and
-> `npm audit` is clean apart from a single known **moderate** advisory in
-> **mxGraph** (`GHSA-j4rv-pr9g-q8jv`, XSS in `setTooltips`). mxGraph is no longer
-> maintained upstream and has no fix available; it is tracked separately, and a
-> future move to [`@maxgraph/core`](https://github.com/maxGraph/maxGraph) would
-> clear it.
+> **Dependencies & security:** the dependency tree is current (Angular 20) and the
+> default **maxGraph** build is `npm audit`-clean. The one remaining advisory —
+> moderate, in legacy **mxGraph** (`GHSA-j4rv-pr9g-q8jv`, XSS in `setTooltips`,
+> unmaintained, no fix) — applies only to the optional `mxgraph` build; the default
+> build does not include `mxgraph` at all.
 
 ### Run the dev server
 
