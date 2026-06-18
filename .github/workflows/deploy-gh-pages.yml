@@ -1,0 +1,56 @@
+name: Deploy to GitHub Pages
+
+# Builds the Angular app (production, default maxGraph backend) and publishes it to
+# the ROOT of the `gh-pages` branch — just the app, no enclosing folder. GitHub Pages
+# serves a project site under the repository name, so the build rewrites the index.html
+# base tag to <base href="/adaptui-web-ide/"> (the source stays "/" for local dev).
+#
+# One-time setup: after the first successful run, go to
+#   Settings → Pages → Build and deployment → Source: "Deploy from a branch"
+#   → Branch: gh-pages / (root)
+# The site is then served at https://caiusno1.github.io/adaptui-web-ide/
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # required to push the built site to the gh-pages branch
+
+# Never run two deployments concurrently.
+concurrency:
+  group: deploy-gh-pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: adaptui-frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: adaptui-frontend
+        run: npm ci
+
+      - name: Build (sets <base href="/adaptui-web-ide/">)
+        working-directory: adaptui-frontend
+        run: npm run build:pages
+
+      - name: Publish the app to the gh-pages branch root
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          # Publishes the CONTENTS of this directory to the branch root, so index.html
+          # and the bundles land directly at the top of gh-pages (no subfolder).
+          publish_dir: ./adaptui-frontend/dist/adaptui-frontend/browser
+          # peaceiris adds .nojekyll automatically (serves _-prefixed files, no Jekyll).
