@@ -26,6 +26,18 @@
         <li class="muted" *ngIf="!events.length">No events in the IFML model.</li>
       </ul>
     </div>
+
+    <div class="side-block">
+      <div class="side-label">Lifecycle events (per view)</div>
+      <ul class="ev-list">
+        <li *ngFor="let e of lifecycleEvents" [class.active]="e.name === selectedEventName" (click)="selectEvent(e.name)">
+          <span class="ev-name">{{ e.container }} · <b>{{ e.kind }}</b></span>
+          <mat-icon class="ev-ic" *ngIf="hasEventCode(e.name)" matTooltip="Refined with code">code</mat-icon>
+        </li>
+        <li class="muted" *ngIf="!lifecycleEvents.length">No view containers yet.</li>
+      </ul>
+      <div class="hint-note">Fire on load / re-adapt / leave of a view in the Preview.</div>
+    </div>
   </aside>
 
   <section class="code-main">

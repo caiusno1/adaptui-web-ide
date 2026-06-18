@@ -13,16 +13,12 @@ import { ContextModelService } from '../services/context-model.service';
 import { OperationModelService } from '../services/operation-model.service';
 import { ProjectService } from '../services/project.service';
 
-// mxGraph is loaded as a global browser script (see angular.json -> scripts).
-declare var mxGraph: any;
-declare var mxUtils: any;
-declare var mxRubberband: any;
-declare var mxConstants: any;
-declare var mxClient: any;
-declare var mxGraphModel: any;
-declare var mxEvent: any;
-declare var mxKeyHandler: any;
-declare var mxEdgeStyle: any;
+// Graph primitives via the build-selected backend: maxGraph by default, or the
+// legacy global mxGraph via the `mxgraph` build flag. See ../graph/graph-backend.
+import {
+  mxGraph, mxGraphModel, mxClient, mxEvent, mxRubberband, mxKeyHandler,
+  mxConstants, mxEdgeStyle, mxUtils, cellStyleName,
+} from '../graph/graph-backend';
 
 interface AdaptPaletteItem {
   kind: 'condition' | 'operation' | 'gate';
@@ -43,6 +39,7 @@ interface AdaptPaletteItem {
  * plus its incoming conditions forms an adaptation rule, exportable as XML.
  */
 @Component({
+  standalone: false,
   selector: 'app-adapt-ml',
   templateUrl: './adapt-ml.component.html',
   styleUrls: ['./adapt-ml.component.sass'],
@@ -151,13 +148,13 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
         const g = cell.geometry || {};
         vertices.push({
           id: cell.id, x: g.x || 0, y: g.y || 0, w: g.width || 0, h: g.height || 0,
-          style: cell.style || '', value: cell.value || '', data: this.nodeData.get(cell.id),
+          style: cellStyleName(cell), value: cell.value || '', data: this.nodeData.get(cell.id),
         });
       } else if (model.isEdge(cell)) {
         const s = model.getTerminal(cell, true);
         const t = model.getTerminal(cell, false);
         if (s && t) {
-          edges.push({ source: s.id, target: t.id, style: cell.style || '', value: cell.value || '' });
+          edges.push({ source: s.id, target: t.id, style: cellStyleName(cell), value: cell.value || '' });
         }
       }
     }
@@ -235,10 +232,13 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     };
     model.beginUpdate();
     try {
-      // Daytime: a CODE operation (defined in the Code tab) stripes the post cards.
+      // Daytime: CODE operations (defined in the Code tab) stripe the post cards and
+      // create extra runtime posts in the feed.
       const condDay = add({ kind: 'condition', condition: { propertyKey: 'time', operator: '<', value: '20' } }, 'conditionStyle', 40, 40, 190, 90);
-      const zebra = add({ kind: 'operation', operation: { operationName: 'zebra' } }, 'operationStyle', 330, 50, 210, 72);
+      const zebra = add({ kind: 'operation', operation: { operationName: 'zebra' } }, 'operationStyle', 330, 30, 210, 72);
+      const extra = add({ kind: 'operation', operation: { operationName: 'extraPosts' } }, 'operationStyle', 330, 110, 210, 72);
       graph.insertEdge(parent, null, '', condDay, zebra);
+      graph.insertEdge(parent, null, '', condDay, extra);
 
       // Evening: modelled (graph) operations switch the app to a dark theme.
       const condNight = add({ kind: 'condition', condition: { propertyKey: 'time', operator: '>=', value: '20' } }, 'conditionStyle', 40, 200, 190, 90);

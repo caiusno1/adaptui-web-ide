@@ -4,6 +4,7 @@ import { Subscription } from 'rxjs';
 import { ProjectService } from './services/project.service';
 
 @Component({
+  standalone: false,
   selector: 'app-root',
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.sass']

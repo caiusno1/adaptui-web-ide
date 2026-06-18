@@ -11,14 +11,12 @@ import { IfmlModelService } from '../services/ifml-model.service';
 import { OperationModelService } from '../services/operation-model.service';
 import { ProjectService } from '../services/project.service';
 
-declare var mxGraph: any;
-declare var mxUtils: any;
-declare var mxRubberband: any;
-declare var mxConstants: any;
-declare var mxClient: any;
-declare var mxGraphModel: any;
-declare var mxEvent: any;
-declare var mxKeyHandler: any;
+// Graph primitives via the build-selected backend: maxGraph by default, or the
+// legacy global mxGraph via the `mxgraph` build flag. See ../graph/graph-backend.
+import {
+  mxGraph, mxGraphModel, mxClient, mxEvent, mxRubberband, mxKeyHandler,
+  mxConstants, mxUtils,
+} from '../graph/graph-backend';
 
 interface OpPaletteItem {
   kind: PatternNodeKind;
@@ -32,6 +30,7 @@ const ROLE_COLORS: { [role: string]: { stroke: string; fill: string } } = {
   preserve: { stroke: '#455a64', fill: '#eceff1' },
   create: { stroke: '#2e7d32', fill: '#e8f5e9' },
   delete: { stroke: '#c62828', fill: '#ffebee' },
+  forbid: { stroke: '#ef6c00', fill: '#fff3e0' },
 };
 
 /**
@@ -42,6 +41,7 @@ const ROLE_COLORS: { [role: string]: { stroke: string; fill: string } } = {
  * applied on the right-hand side. Operations are published by name for ADAPTML.
  */
 @Component({
+  standalone: false,
   selector: 'app-operation-ml',
   templateUrl: './operation-ml.component.html',
   styleUrls: ['./operation-ml.component.sass'],
@@ -60,7 +60,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   ];
 
   // Option lists for the configuration panel.
-  readonly roles: PatternRole[] = ['preserve', 'create', 'delete'];
+  readonly roles: PatternRole[] = ['preserve', 'create', 'delete', 'forbid'];
   readonly matches: ElementMatch[] = ['any', 'ViewContainer', 'ViewComponent', 'Event'];
   readonly selectorKinds: PatternSelectorKind[] = ['none', 'class', 'id'];
   readonly relations = RELATION_KINDS;
@@ -212,11 +212,11 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     const node = (data: PatternNodeData): OpNode => ({ id: 'n1', x: 60, y: 60, w: 240, h: 96, data });
     const surfaces: PatternNodeData = {
       kind: 'element', role: 'preserve', match: 'ViewContainer', selectorKind: 'none', selector: '',
-      setVisible: '', setProps: { backgroundColor: '#0f172a', backgroundImage: 'none', borderColor: '#1e293b' },
+      condProps: {}, setVisible: '', setProps: { backgroundColor: '#0f172a', backgroundImage: 'none', borderColor: '#1e293b' },
     };
     const text: PatternNodeData = {
       kind: 'element', role: 'preserve', match: 'ViewComponent', selectorKind: 'none', selector: '',
-      setVisible: '', setProps: { color: '#e2e8f0', backgroundColor: '#0f172a' },
+      condProps: {}, setVisible: '', setProps: { color: '#e2e8f0', backgroundColor: '#0f172a' },
     };
     this.operations.push({ id: `op_${++this.opCounter}`, name: 'Dark surfaces', nodes: [node(surfaces)], edges: [] });
     this.operations.push({ id: `op_${++this.opCounter}`, name: 'Dark text', nodes: [node(text)], edges: [] });
@@ -429,6 +429,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
       match: kind === 'element' ? 'ViewComponent' : 'any',
       selectorKind: 'none',
       selector: '',
+      condProps: {},
       setVisible: '',
       setProps: {},
     };
@@ -448,9 +449,36 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.styleProperties.filter((p) => p.group === group);
   }
 
-  /** The raw RHS value of a property on the selected node ('' = unchanged). */
+  /** Whether a property is a LHS match condition ('match', in condProps) or an RHS assignment ('set'). */
+  nodePropMode(def: StylePropDef): 'set' | 'match' {
+    return this.selectedNode && this.selectedNode.condProps && this.selectedNode.condProps[def.key] !== undefined ? 'match' : 'set';
+  }
+
+  /** Switches a property between an RHS assignment and a LHS match condition. */
+  setNodePropMode(def: StylePropDef, mode: 'set' | 'match'): void {
+    const n = this.selectedNode;
+    if (!n) {
+      return;
+    }
+    if (!n.condProps) { n.condProps = {}; }
+    const current = n.condProps[def.key] !== undefined ? n.condProps[def.key] : (n.setProps[def.key] ?? '');
+    delete n.condProps[def.key];
+    delete n.setProps[def.key];
+    if (mode === 'match') {
+      n.condProps[def.key] = current;
+    } else if (current !== '') {
+      n.setProps[def.key] = current;
+    }
+    this.onNodeChange();
+  }
+
+  /** The raw value of a property on the selected node, from whichever map holds it. */
   rawNodeProp(def: StylePropDef): string {
-    return this.selectedNode?.setProps[def.key] ?? '';
+    const n = this.selectedNode;
+    if (!n) {
+      return '';
+    }
+    return ((n.condProps && n.condProps[def.key] !== undefined) ? n.condProps[def.key] : n.setProps[def.key]) ?? '';
   }
 
   /** Colour-picker value — defaults to white when unset. */
@@ -459,15 +487,18 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     return v === '' && def.input === 'color' ? '#ffffff' : v;
   }
 
-  /** Sets (or clears) an RHS style-property assignment on the selected node. */
+  /** Sets (or clears) a property value on the selected node, into its current (set/match) map. */
   setNodeProp(def: StylePropDef, value: string): void {
-    if (!this.selectedNode) {
+    const n = this.selectedNode;
+    if (!n) {
       return;
     }
+    if (!n.condProps) { n.condProps = {}; }
+    const map = n.condProps[def.key] !== undefined ? n.condProps : n.setProps;
     if (value === '' || value == null) {
-      delete this.selectedNode.setProps[def.key];
+      delete map[def.key];
     } else {
-      this.selectedNode.setProps[def.key] = value;
+      map[def.key] = value;
     }
     this.onNodeChange();
   }
@@ -482,7 +513,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   get showAssignments(): boolean {
-    return !!this.selectedNode && this.selectedNode.role !== 'delete';
+    return !!this.selectedNode && this.selectedNode.role !== 'delete' && this.selectedNode.role !== 'forbid';
   }
 
   onNodeSelectorKindChange(): void {
@@ -545,15 +576,15 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   // --------------------------------------------------------------------------
 
   private styleFor(data: PatternNodeData): string {
-    const c = ROLE_COLORS[data.role];
+    const c = ROLE_COLORS[data.role] || ROLE_COLORS['preserve'];
     const rounded = data.kind === 'style' ? 'rounded=1;' : 'rounded=0;';
-    const dashed = data.role === 'delete' ? 'dashed=1;' : '';
+    const dashed = data.role === 'delete' || data.role === 'forbid' ? 'dashed=1;' : '';
     return `shape=rectangle;${rounded}${dashed}fillColor=${c.fill};strokeColor=${c.stroke};strokeWidth=1.5;fontColor=#263238;fontSize=11;whiteSpace=wrap;`;
   }
 
   private edgeStyleFor(data: PatternEdgeData): string {
-    const c = ROLE_COLORS[data.role];
-    const dashed = data.role === 'delete' ? 'dashed=1;' : '';
+    const c = ROLE_COLORS[data.role] || ROLE_COLORS['preserve'];
+    const dashed = data.role === 'delete' || data.role === 'forbid' ? 'dashed=1;' : '';
     return `endArrow=classic;rounded=1;strokeColor=${c.stroke};${dashed}fontColor=#455a64;fontSize=10;labelBackgroundColor=#ffffff;`;
   }
 
@@ -565,14 +596,16 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     } else if (data.selectorKind === 'id' && data.selector) {
       sel = ` #${data.selector}`;
     }
+    const condCount = Object.keys(data.condProps || {}).filter((k) => data.condProps[k] !== '').length;
+    const condStr = condCount ? `\nif ${condCount} attr${condCount === 1 ? '' : 's'}` : '';
     const sets: string[] = [];
-    if (data.role !== 'delete') {
+    if (data.role !== 'delete' && data.role !== 'forbid') {
       if (data.setVisible) { sets.push(`visible=${data.setVisible}`); }
       const count = Object.keys(data.setProps || {}).filter((k) => data.setProps[k] !== '').length;
-      if (count) { sets.push(`${count} prop${count === 1 ? '' : 's'}`); }
+      if (count) { sets.push(`set ${count} prop${count === 1 ? '' : 's'}`); }
     }
     const setStr = sets.length ? `\n${sets.join(', ')}` : '';
-    return `«${data.role}» ${head}${sel}${setStr}`;
+    return `«${data.role}» ${head}${sel}${condStr}${setStr}`;
   }
 
   private edgeLabel(data: PatternEdgeData): string {
@@ -590,8 +623,14 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     lines.push('<op:OperationModel xmlns:op="http://adaptui.org/operations/1.0" name="AdaptUI Operations">');
     for (const op of this.operations) {
       lines.push(`  <operation name="${this.esc(op.name)}">`);
-      this.appendSide(lines, op, 'lhs', (n) => n.data.role !== 'create', (e) => e.data.role !== 'create');
-      this.appendSide(lines, op, 'rhs', (n) => n.data.role !== 'delete', (e) => e.data.role !== 'delete');
+      // LHS = preserve + delete + create-with-conditions; RHS = preserve + create; NAC = forbid.
+      this.appendSide(lines, op, 'lhs', (n) => n.data.role === 'preserve' || n.data.role === 'delete' || (n.data.role === 'create' && this.hasConds(n.data)), (e) => e.data.role === 'preserve' || e.data.role === 'delete');
+      this.appendSide(lines, op, 'rhs', (n) => n.data.role === 'preserve' || n.data.role === 'create', (e) => e.data.role === 'preserve' || e.data.role === 'create');
+      const forbidIds = new Set(op.nodes.filter((n) => n.data.role === 'forbid').map((n) => n.id));
+      const nacEdge = (e: OpEdge) => e.data.role === 'forbid' || forbidIds.has(e.source) || forbidIds.has(e.target);
+      if (forbidIds.size > 0 || op.edges.some(nacEdge)) {
+        this.appendSide(lines, op, 'nac', (n) => n.data.role === 'forbid', nacEdge);
+      }
       lines.push('  </operation>');
     }
     lines.push('</op:OperationModel>');
@@ -599,19 +638,20 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private appendSide(
-    lines: string[], op: OperationModel, side: 'lhs' | 'rhs',
+    lines: string[], op: OperationModel, side: 'lhs' | 'rhs' | 'nac',
     keepNode: (n: OpNode) => boolean, keepEdge: (e: OpEdge) => boolean,
   ): void {
     lines.push(`    <${side}>`);
     for (const node of op.nodes.filter(keepNode)) {
       const attrs = this.nodeMatchAttrs(node);
-      const sets = side === 'rhs' ? this.nodeSets(node) : [];
-      if (sets.length === 0) {
+      // LHS nodes carry attribute conditions; RHS nodes carry assignments.
+      const children = side === 'rhs' ? this.nodeSets(node) : (side === 'lhs' ? this.nodeConds(node) : []);
+      if (children.length === 0) {
         lines.push(`      <node ${attrs}/>`);
       } else {
         lines.push(`      <node ${attrs}>`);
-        for (const s of sets) {
-          lines.push(`        ${s}`);
+        for (const c of children) {
+          lines.push(`        ${c}`);
         }
         lines.push('      </node>');
       }
@@ -641,6 +681,23 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
       const v = d.setProps?.[def.key];
       if (v !== undefined && v !== '') {
         out.push(`<set property="${def.key}" value="${this.esc(v)}"/>`);
+      }
+    }
+    return out;
+  }
+
+  /** True if the node carries at least one attribute condition. */
+  private hasConds(d: PatternNodeData): boolean {
+    return !!d.condProps && Object.keys(d.condProps).some((k) => d.condProps[k] !== '');
+  }
+
+  private nodeConds(node: OpNode): string[] {
+    const out: string[] = [];
+    const d = node.data;
+    for (const def of STYLE_PROPERTIES) {
+      const v = d.condProps?.[def.key];
+      if (v !== undefined && v !== '') {
+        out.push(`<cond property="${def.key}" value="${this.esc(v)}"/>`);
       }
     }
     return out;

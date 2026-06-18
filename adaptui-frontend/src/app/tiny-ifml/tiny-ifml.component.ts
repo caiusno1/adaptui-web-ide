@@ -1,31 +1,18 @@
-import { AfterViewInit, Component, ElementRef, NgZone, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
 import { AdaptationClass, IfmlElementRef } from '../model/adaptation.model';
 import { GraphSnapshot, GraphVertex } from '../model/project.model';
 import { IfmlFlow } from '../model/transformation.model';
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
 import { ProjectService } from '../services/project.service';
-
-// mxGraph is loaded as a global script (see angular.json -> scripts). These
-// declarations expose the parts of the library we use to the TypeScript
-// compiler. The library itself is untyped here, hence `any`.
-declare var mxGraph: any;
-declare var mxPoint: any;
-declare var mxUtils: any;
-declare var mxRubberband: any;
-declare var mxConstants: any;
-declare var mxCylinder: any;
-declare var mxCellRenderer: any;
-declare var mxClient: any;
-declare var mxGraphModel: any;
-declare var mxEvent: any;
-declare var mxConnectionHandler: any;
-declare var mxImage: any;
-declare var mxKeyHandler: any;
-declare var mxCell: any;
-declare var mxGeometry: any;
-declare var mxPerimeter: any;
-declare var mxEdgeStyle: any;
+import { Subscription } from 'rxjs';
+// Graph primitives come from the build-selected backend: maxGraph by default,
+// or the legacy global mxGraph via the `mxgraph` build flag. The separation
+// layer (../graph/graph-backend) exposes one uniform mxGraph-style surface.
+import {
+  mxGraph, mxGraphModel, mxGeometry, mxClient, mxEvent, mxRubberband, mxKeyHandler,
+  mxConstants, mxPerimeter, mxEdgeStyle, mxUtils, cellStyleName, registerBoxShape,
+} from '../graph/graph-backend';
 
 /**
  * Describes a draggable/clickable element in the IFML palette and links it to
@@ -49,11 +36,12 @@ export interface IfmlPaletteItem {
 }
 
 @Component({
+  standalone: false,
   selector: 'app-tiny-ifml',
   templateUrl: './tiny-ifml.component.html',
   styleUrls: ['./tiny-ifml.component.sass']
 })
-export class TinyIfmlComponent implements OnInit, AfterViewInit {
+export class TinyIfmlComponent implements OnInit, OnDestroy, AfterViewInit {
 
   @ViewChild('graphContainer')
   containerElementRef!: ElementRef;
@@ -97,8 +85,16 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     private projectService: ProjectService,
   ) { }
 
+  /** Keeps the class list (combobox datalist + Style selector options) current. */
+  private classSub?: Subscription;
+
   ngOnInit(): void {
     this.adaptationClasses = this.classService.classes;
+    this.classSub = this.classService.classes$.subscribe((cs) => { this.adaptationClasses = cs; });
+  }
+
+  ngOnDestroy(): void {
+    this.classSub?.unsubscribe();
   }
 
   get container() {
@@ -174,13 +170,13 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
         vertices.push({
           id: cell.id, parent: parentId,
           x: g.x || 0, y: g.y || 0, w: g.width || 0, h: g.height || 0,
-          style: cell.style || '', value: cell.value || '', data: this.meta.get(cell.id) || '',
+          style: cellStyleName(cell), value: cell.value || '', data: this.meta.get(cell.id) || '',
         });
       } else if (model.isEdge(cell)) {
         const s = model.getTerminal(cell, true);
         const t = model.getTerminal(cell, false);
         if (s && t) {
-          edges.push({ source: s.id, target: t.id, style: cell.style || '', value: cell.value || '' });
+          edges.push({ source: s.id, target: t.id, style: cellStyleName(cell), value: cell.value || '' });
         }
       }
     }
@@ -303,6 +299,7 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
       }
     }
     this.ifmlService.setModel(refs, flows);
+    this.refreshContainment();
   }
 
   private onSelectionChanged(): void {
@@ -318,6 +315,7 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     } else {
       this.selected = null;
     }
+    this.refreshContainment();
   }
 
   /** Renames the selected element (panel input). */
@@ -333,13 +331,93 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     }
   }
 
-  /** Reassigns the selected element's adaptation class (panel select). */
-  onClassChange(className: string): void {
+  /**
+   * Commits the selected element's class (panel combobox). The class is the hook
+   * the Style DSL and ADAPTML rules select on, so a freshly typed name is also
+   * registered as an adaptation class — which makes it available as a selector
+   * in the Style editor and anywhere else classes are listed.
+   */
+  onClassChange(): void {
     if (!this.selected) {
       return;
     }
-    this.meta.set(this.selected.cellId, className);
-    this.selected.className = className;
+    const name = (this.selected.className || '').trim();
+    this.selected.className = name;
+    this.meta.set(this.selected.cellId, name);
+    if (name && !this.classService.getClass(name)) {
+      this.classService.addClass({ name, label: name, properties: [] });
+    }
+    this.publishElements();
+  }
+
+  // --------------------------------------------------------------------------
+  // Manual containment — declare a parent the auto-nesting did not pick up
+  // --------------------------------------------------------------------------
+
+  /** Parent-container options for the selected element, and its current parent
+   *  id. Held as fields (recomputed only on selection / structural change) so the
+   *  template keeps a stable binding reference and change detection stabilises. */
+  parentOptions: Array<{ id: string; name: string }> = [];
+  selectedParentId = '';
+
+  /** Recomputes {@link parentOptions} / {@link selectedParentId} from the current
+   *  selection. Containers that are the element itself or its descendants are
+   *  excluded to prevent a containment cycle. */
+  private refreshContainment(): void {
+    if (!this.graph || !this.selected) {
+      this.parentOptions = [];
+      this.selectedParentId = '';
+      return;
+    }
+    const model = this.graph.getModel();
+    const sel = model.getCell(this.selected.cellId);
+    if (!sel) {
+      this.parentOptions = [];
+      this.selectedParentId = '';
+      return;
+    }
+    const banned = new Set<string>([sel.id, ...model.getDescendants(sel).map((c: any) => c.id)]);
+    this.parentOptions = model.getDescendants(this.graph.getDefaultParent())
+      .filter((c: any) => this.isViewContainer(c) && !banned.has(c.id))
+      .map((c: any) => ({ id: c.id, name: this.cleanName(c.value) || 'ViewContainer' }));
+    const parent = model.getParent(sel);
+    this.selectedParentId = parent && this.isViewContainer(parent) ? parent.id : '';
+  }
+
+  /** Re-parents the selected element into the chosen container (or to the top
+   *  level), fixing containment the editor did not recognise automatically. */
+  onParentChange(parentCellId: string): void {
+    if (!this.graph || !this.selected) {
+      return;
+    }
+    const graph = this.graph;
+    const model = graph.getModel();
+    const cell = model.getCell(this.selected.cellId);
+    if (!cell) {
+      return;
+    }
+    const root = graph.getDefaultParent();
+    const newParent = parentCellId ? model.getCell(parentCellId) : root;
+    if (!newParent || newParent === model.getParent(cell)) {
+      return;
+    }
+    // Guard against cycles: cannot nest an element into itself or a descendant.
+    const banned = new Set<string>([cell.id, ...model.getDescendants(cell).map((c: any) => c.id)]);
+    if (parentCellId && banned.has(parentCellId)) {
+      return;
+    }
+    model.beginUpdate();
+    try {
+      model.add(newParent, cell);
+      const g = cell.geometry;
+      if (g && newParent !== root) {
+        const offset = (this.clickInsertCount++ % 6) * 16;
+        model.setGeometry(cell, new mxGeometry(16 + offset, 30 + offset, g.width, g.height));
+      }
+    } finally {
+      model.endUpdate();
+    }
+    graph.setSelectionCell(cell);
     this.publishElements();
   }
 
@@ -371,46 +449,18 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     keyHandler.bindKey(46, () => this.deleteSelected()); // Delete
     keyHandler.bindKey(8, () => this.deleteSelected());  // Backspace
 
-    // New connections are created as navigation flows.
-    const self = this;
-    const baseCreateEdge = graph.createEdge.bind(graph);
-    graph.createEdge = function (parent: any, id: any, value: any, source: any, target: any, style: any) {
-      return baseCreateEdge(parent, id, value != null ? value : '', source, target, style || 'navigationFlowStyle');
-    };
-
-    // Only let users start a flow from a view element or an event, and never
-    // from / to an annotation. Keeps the produced IFML model meaningful.
-    graph.isValidSource = function (cell: any) {
-      return cell != null && !self.isAnnotation(cell) && mxGraph.prototype.isValidSource.apply(this, [cell]);
-    };
-    graph.isValidTarget = function (cell: any) {
-      return cell != null && !self.isAnnotation(cell);
-    };
+    // Only let users start / end a flow on a view element or event, never an
+    // annotation. Kept backend-agnostic: no reliance on the library's base
+    // isValidSource (whose signature differs between mxGraph and maxGraph).
+    // New connections still adopt the navigation-flow look via the default edge
+    // style set in registerStyles().
+    graph.isValidSource = (cell: any) => cell != null && !this.isAnnotation(cell);
+    graph.isValidTarget = (cell: any) => cell != null && !this.isAnnotation(cell);
   }
 
   /** Registers the custom "box" shape used for view containers (title bar). */
   private registerShapes(): void {
-    if (mxCellRenderer.defaultShapes && mxCellRenderer.defaultShapes['box']) {
-      return; // already registered (e.g. when the view is re-created)
-    }
-
-    function BoxShape(this: any) {
-      mxCylinder.call(this);
-    }
-    mxUtils.extend(BoxShape, mxCylinder);
-    BoxShape.prototype.extrude = 10;
-    BoxShape.prototype.redrawPath = function (path: any, x: any, y: any, w: number, h: number) {
-      path.moveTo(0, 0);
-      path.lineTo(w, 0);
-      path.lineTo(w, 0.12 * h);
-      path.lineTo(0, 0.12 * h);
-      path.moveTo(w, 0);
-      path.lineTo(w, h);
-      path.lineTo(0, h);
-      path.lineTo(0, 0);
-      path.close();
-    };
-    mxCellRenderer.registerShape('box', BoxShape);
+    registerBoxShape();
   }
 
   /** Registers the named cell styles for every IFML element type. */
@@ -634,7 +684,7 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
   // --------------------------------------------------------------------------
 
   private styleOf(cell: any): string {
-    return (cell && typeof cell.style === 'string') ? cell.style : '';
+    return cellStyleName(cell);
   }
 
   private isViewContainer(cell: any): boolean {
@@ -908,8 +958,9 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
       const feedView = cont(parent, 'News Feed', 'appView', 460, 40, 560, 660);
       const menu = cont(feedView, 'Menu', 'menubar', 24, 46, 510, 70);
       comp(menu, 'SocialApp', 'brand', 16, 22, 150, 34);
-      const navFeed = evt(menu, 'Feed', 'navlink', 330, 26);
-      const navLogout = evt(menu, 'Log out', 'navlink', 430, 26);
+      const navFeed = evt(menu, 'Feed', 'navlink', 300, 26);
+      evt(menu, 'New Post', 'navlink', 370, 26);
+      const navLogout = evt(menu, 'Log out', 'navlink', 440, 26);
       const feed = cont(feedView, 'Feed', 'feedgrid', 24, 134, 510, 500);
       const post = (label: string, author: string, body: string, x: number, y: number) => {
         const p = cont(feed, label, 'post', x, y, 230, 200);

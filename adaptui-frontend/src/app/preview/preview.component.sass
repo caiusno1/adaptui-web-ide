@@ -77,8 +77,38 @@
 .view-bar
   display: flex
   flex-wrap: wrap
+  align-items: center
   gap: 6px
   margin-bottom: 16px
+
+.view-bar-spacer
+  flex: 1 1 auto
+
+.reset-btn
+  display: inline-flex
+  align-items: center
+  gap: 4px
+  padding: 5px 12px
+  font-size: 12.5px
+  color: #5f6368
+  background: #fff
+  border: 1px solid #cfd8dc
+  border-radius: 16px
+  cursor: pointer
+
+.reset-btn:hover:not(:disabled)
+  color: #c62828
+  border-color: #ef9a9a
+  background: #fdecea
+
+.reset-btn:disabled
+  opacity: .5
+  cursor: default
+
+.reset-btn mat-icon
+  font-size: 16px
+  width: 16px
+  height: 16px
 
 .view-tab
   padding: 6px 14px
@@ -189,3 +219,117 @@
   flex-wrap: wrap
   gap: 12px
   margin-top: 8px
+
+// --- Full-screen "app" mode ---------------------------------------------------
+
+.fs-overlay
+  position: fixed
+  inset: 0
+  z-index: 2000
+  display: flex
+  background: #eceff1
+  overflow: auto
+
+.fs-stage
+  display: flex
+  flex: 1 1 auto
+  min-height: 100vh
+
+.fs-stage > .rt-node
+  flex: 1 1 auto
+  display: flex
+  flex-direction: column
+
+.fs-stage > .rt-node > .rt-children
+  flex: 1 1 auto
+
+.fs-fab
+  position: fixed
+  right: 22px
+  bottom: 22px
+  z-index: 2100
+  width: 54px
+  height: 54px
+  display: flex
+  align-items: center
+  justify-content: center
+  color: #fff
+  background: #3949ab
+  border: none
+  border-radius: 50%
+  box-shadow: 0 6px 18px rgba(15, 23, 42, .35)
+  cursor: pointer
+
+.fs-fab:hover
+  background: #303f9f
+
+.fs-fab.open
+  background: #5c6bc0
+
+.fs-menu
+  position: fixed
+  right: 22px
+  bottom: 88px
+  z-index: 2100
+  width: 260px
+  max-height: 72vh
+  overflow-y: auto
+  display: flex
+  flex-direction: column
+  gap: 8px
+  padding: 14px
+  background: #fff
+  border-radius: 12px
+  box-shadow: 0 12px 32px rgba(15, 23, 42, .28)
+  font-family: Roboto, "Helvetica Neue", sans-serif
+
+.fs-menu-title
+  font-size: 11px
+  font-weight: 600
+  text-transform: uppercase
+  letter-spacing: .05em
+  color: #3949ab
+
+.fs-empty
+  font-size: 12px
+  color: #90a4ae
+
+.fs-actions
+  display: flex
+  flex-direction: column
+  gap: 6px
+  margin-top: 6px
+  padding-top: 10px
+  border-top: 1px solid #eceff1
+
+.fs-action
+  display: inline-flex
+  align-items: center
+  gap: 6px
+  padding: 7px 12px
+  font-size: 13px
+  color: #37474f
+  background: #f5f5f5
+  border: 1px solid #e0e0e0
+  border-radius: 7px
+  cursor: pointer
+
+.fs-action:hover:not(:disabled)
+  background: #eceff1
+
+.fs-action:disabled
+  opacity: .5
+  cursor: default
+
+.fs-action.fs-exit
+  color: #fff
+  background: #3949ab
+  border-color: #3949ab
+
+.fs-action.fs-exit:hover
+  background: #303f9f
+
+.fs-action mat-icon
+  font-size: 18px
+  width: 18px
+  height: 18px

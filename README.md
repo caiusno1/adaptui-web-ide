@@ -40,8 +40,12 @@ by this editor are:
 - **Navigation Flow** — a directed connection (an **arrow**) from an event to a target view element, expressing "when this happens, go there".
 - **Annotation** — a free-text note. In this editor annotations also carry AdaptUI generator hints (e.g. `ADAPTUI-ANNOTATION-STYLE=EDIT`).
 
-Each IFML element additionally links to an **adaptation class** (see below), which
-declares the properties an adaptation may change on it.
+Each IFML element also carries a **class**, set in the editor's property panel (type a
+new name to create one on the spot). The class is the hook the rest of the model targets:
+the **Style** editor's *by class* rules style every element that shares it, and **ADAPTML**
+adaptations select on it (the class also declares the properties an adaptation may change).
+The panel's **Parent container** dropdown re-declares containment when the canvas did not
+nest an element automatically.
 
 ---
 
@@ -85,21 +89,24 @@ The pieces compose like this:
   `age > 50`) to a **defined operation** (modelled *or* code). Conditions are combined
   by **«AND» / «OR» gate** nodes into a boolean expression; an operation fires **only**
   when its expression is satisfied (an operation with no conditions never fires).
-- **PREVIEW** runs the whole stack: it builds a runtime *host graph* from IFML
-  (concretized by Style), and for every ADAPTML rule whose condition expression holds
-  it applies the referenced operation — a modelled rewrite (match LHS, apply RHS) or a
-  **code operation** (run the function over the host). The result is rendered as a
-  navigable, page-style UI; triggering an event reroutes between views and runs the
-  event's **code refinement**. See the
+- **PREVIEW** runs the whole stack. On any change it rebuilds the runtime model from
+  scratch: it builds a *host graph* from IFML (concretized by Style), folds in the
+  **permanent runtime changes made by event refinements**, then **applies the
+  applicable adaptations repeatedly until none changes the graph any more** (a
+  fixpoint, so operations that enable one another all take effect). Each operation is
+  a modelled rewrite (match LHS, apply RHS) or a **code operation** (run the function
+  over the host); both are *transient* — re-derived on every recompute. The result is
+  rendered as a navigable, page-style UI; triggering an event reroutes between views
+  and runs the event's **code refinement**. See the
   [adaptation engine](adaptui-frontend/src/app/preview/adaptation-engine.ts).
 
 ---
 
 ## Tech stack
 
-- **Angular 12** (`@angular/*` 12.2) + **TypeScript 4.3**
-- **Angular Material 12** for the shell (toolbar, tabs, buttons, tooltips, checkboxes)
-- **[mxGraph](https://github.com/jgraph/mxgraph) 4.2** for the diagramming canvas, loaded as a global browser script
+- **Angular 20** (`@angular/*` 20.x) + **TypeScript 5.9**, built with the esbuild-based `@angular/build:application` builder
+- **Angular Material 20** for the shell (toolbar, tabs, buttons, tooltips, checkboxes)
+- **[maxGraph](https://github.com/maxGraph/maxGraph) 0.23** for the diagramming canvases (the maintained TypeScript successor to mxGraph) — or legacy **[mxGraph](https://github.com/jgraph/mxgraph) 4.2** via a build flag, behind a shared separation layer
 - **SASS** (indented syntax) for component styles
 - **Karma + Jasmine** for unit tests
 
@@ -112,7 +119,7 @@ adaptui-web-ide/
 ├── LICENSE
 ├── README.md                     ← you are here
 └── adaptui-frontend/             ← the Angular application
-    ├── angular.json              ← build/serve/test config; bundles mxGraph as a global script
+    ├── angular.json              ← build/serve/test config; selects the graph backend (maxGraph default, mxGraph via flag)
     ├── package.json
     └── src/
         ├── index.html
@@ -120,10 +127,13 @@ adaptui-web-ide/
         ├── styles.sass           ← global styles
         ├── config/
         │   └── mxgraph-config.js ← sets mxBasePath = "assets/mxgraph"
-        ├── assets/               ← static assets (mxGraph images are copied here at build time)
+        ├── assets/               ← static assets (mxGraph images are copied here for the mxGraph build)
         └── app/
             ├── app.module.ts     ← root module; registers components & Material modules
             ├── app.component.*   ← shell: Material toolbar + project bar + the IFML / STYLE / CONTEXTML / OPERATIONS / CODE / ADAPTML / PREVIEW tabs
+            ├── graph/            ← ★ graph-library separation layer (see below)
+            │   ├── graph-backend.ts          ← maxGraph backend (default)
+            │   └── graph-backend.mxgraph.ts  ← legacy mxGraph backend (built via the `mxgraph` flag)
             ├── model/
             │   ├── adaptation.model.ts      ← adaptation classes, context, IFML refs, ADAPTML rule/configs
             │   ├── transformation.model.ts  ← Style DSL, Operation (LHS→RHS) patterns, runtime host graph
@@ -148,17 +158,36 @@ adaptui-web-ide/
                 └── preview.component.*   ← context side menu + rendered, self-adapting UI
 ```
 
-### How mxGraph is wired in
+### Graph editor backends (maxGraph / mxGraph)
 
-mxGraph ships as plain browser JavaScript, not an ES module, so it is loaded as a
-**global script** rather than imported:
+The four graphical editors (IFML / Style / Operations / ADAPTML) do not depend on a
+specific graph library directly. They import every graph primitive from a single
+**separation layer**, `src/app/graph/graph-backend`, which is provided by one of two
+interchangeable backends selected **at build time**:
 
-- `angular.json` lists `src/config/mxgraph-config.js` and
-  `node_modules/mxgraph/javascript/mxClient.js` under `scripts`, and copies the
-  mxGraph `src` folder to `assets/mxgraph` so the library can find its images.
-- `src/config/mxgraph-config.js` sets `mxBasePath = "assets/mxgraph"`.
-- Components declare the globals they use (`declare var mxGraph: any;`, etc.) at the
-  top of the TypeScript file.
+- **maxGraph** (`@maxgraph/core`) — the **default**; the maintained TypeScript
+  successor to mxGraph, imported as an ES module (`graph-backend.ts`).
+- **mxGraph** (`mxgraph` 4.2) — the legacy library, loaded as a global browser
+  script (`graph-backend.mxgraph.ts`). It is swapped in by the `mxgraph` build
+  configuration via `fileReplacements`, which also adds `src/config/mxgraph-config.js`
+  + `node_modules/mxgraph/javascript/mxClient.js` under `scripts` and copies the
+  mxGraph `src` folder to `assets/mxgraph` (where `mxgraph-config.js` points
+  `mxBasePath`).
+
+The maxGraph backend re-exposes the same `mx*` symbol surface the editors expect and
+smooths over the API differences (string style names vs `CellStyle`, `getModel()` vs
+`getDataModel()`, model helpers that moved onto `Cell`, shape registration, …), so a
+single editor codebase runs unchanged on either library.
+
+Build / run with a specific backend:
+
+| | maxGraph (default) | mxGraph |
+| --- | --- | --- |
+| dev server | `npm start` | `npm run start:mxgraph` |
+| production build | `npm run build` | `npm run build:mxgraph` |
+
+> Only the optional mxGraph build pulls in the unmaintained `mxgraph` package (and
+> its one known advisory); the default maxGraph build ships neither.
 
 ---
 
@@ -166,7 +195,7 @@ mxGraph ships as plain browser JavaScript, not an ES module, so it is loaded as 
 
 ### Prerequisites
 
-- **Node.js** (the project targets the Angular 12 toolchain)
+- **Node.js 20.19+ or 22.12+** (required by the Angular 20 toolchain)
 - **npm**
 
 ### Install
@@ -176,8 +205,11 @@ cd adaptui-frontend
 npm install
 ```
 
-> If `npm install` reports peer-dependency conflicts on a newer npm, use
-> `npm install --legacy-peer-deps`.
+> **Dependencies & security:** the dependency tree is current (Angular 20) and the
+> default **maxGraph** build is `npm audit`-clean. The one remaining advisory —
+> moderate, in legacy **mxGraph** (`GHSA-j4rv-pr9g-q8jv`, XSS in `setTooltips`,
+> unmaintained, no fix) — applies only to the optional `mxgraph` build; the default
+> build does not include `mxgraph` at all.
 
 ### Run the dev server
 
@@ -188,12 +220,8 @@ npm start          # = ng serve
 
 Then open <http://localhost:4200/>. The app reloads on source changes.
 
-> **Node 17+ note:** the Angular 12 build uses an older webpack that trips on
-> modern OpenSSL. If you see an `ERR_OSSL_EVP_UNSUPPORTED` error, run with the
-> legacy provider:
-> ```bash
-> NODE_OPTIONS=--openssl-legacy-provider npm start
-> ```
+> The Angular 20 toolchain runs on modern Node/OpenSSL out of the box — the old
+> `NODE_OPTIONS=--openssl-legacy-provider` workaround is no longer required.
 
 ### Build
 
@@ -206,8 +234,19 @@ npm run build      # outputs to dist/adaptui-frontend
 
 ```bash
 cd adaptui-frontend
-npm test           # runs the Karma/Jasmine unit tests
+npm test                # runs the Karma/Jasmine unit tests
+npm run test:pipeline   # headless end-to-end test that rebuilds the whole model from scratch
 ```
+
+`preview/pipeline-from-scratch.spec.ts` reconstructs the entire background model by
+hand — IFML elements + containment + navigation flows, Style DSL rules, an Operation
+and an ADAPTML rule, plus a context property — with **no seed**, then runs the exact
+Preview pipeline (`buildHostGraph → applyOverlay → runAdaptation → buildRenderTree`)
+and asserts the resulting visualization: two views nested by containment, the styled
+login card, the Sign In event rendered as a button that navigates to the News Feed,
+and the News Feed turning dark at night (Time ≥ 21). It confirms the full workflow is
+reproducible from the model the editors publish, and (being free of the DOM and the
+graph library) runs identically on either graph backend.
 
 ---
 
@@ -380,18 +419,38 @@ selected one as a single **LHS → RHS** rule:
 1. Add **Element** / **Style** pattern nodes and draw edges between them to match a
    sub-pattern of the IFML/Style model.
 2. For each node/edge pick a **role** — **«preserve»** (matched and kept),
-   **«create»** (added on the RHS) or **«delete»** (removed). Roles are colour-coded.
-3. On preserve/create nodes, set what to apply on the RHS — *Visibility* plus **any
-   style property** from the same catalog as the Style DSL (colours, gradients,
-   borders, typography, layout, …). So an operation can change *any* element
-   property, e.g. recolour surfaces and text for a dark theme.
+   **«create»** (added on the RHS), **«delete»** (removed) or **«forbid»** (a
+   **negative application condition**). Roles are colour-coded.
+3. On preserve/create nodes, give each attribute a value and a mode — **Set**
+   (overwrite on the RHS) or **Match** (a LHS condition). Available attributes are
+   *Visibility* plus **any style property** from the same catalog as the Style DSL
+   (colours, gradients, borders, typography, layout, …), so an operation can both
+   *match on* and *change* any element property.
 
-A single pattern node matching by type/class applies to **every** matching element
-(e.g. `match: ViewContainer` recolours all containers), since the engine applies all
-matches of the rule.
+**Multi-attribute LHS conditions.** Switching an attribute to **Match** adds it to the
+node's match conditions. **All** of a node's conditions must hold (strict AND) on top
+of its type/selector for an element to match. The roles then combine with conditions:
 
-**Export Operations XML** (`model.operations`) derives an explicit `<lhs>`/`<rhs>`
-from the roles, with one `<set>` per assigned property:
+- **«create» with no conditions** → an *add-node*: it creates a brand-new IFML/Style
+  element with the given attributes (the default).
+- **«create» (or «preserve») with some attributes set to Match** → a node must be
+  *matched* whose Match attributes equal the given values; its other (Set) attributes
+  are then **overwritten** by the transformation.
+
+**Negative application conditions.** Tag a node (and the edges connecting it) as
+**«forbid»** to express a pattern that must be *absent*: the rule applies to a match
+only if the forbidden pattern cannot be found extending it. For example, *darken every
+`.card` that does **not** contain a `.pin`* — a preserve `.card` with a forbid `.pin`
+joined by a forbid `contains` edge. A lone forbid node means "applies only if no such
+element exists anywhere". (Forbid nodes are exported in a `<nac>` section.)
+
+A single pattern node matching by type/class/attributes applies to **every** matching
+element, and the engine applies all matches of every rule **repeatedly to a fixpoint**
+(so operations that enable one another all take effect); each concrete match is applied
+once per recompute, so add-nodes create exactly once.
+
+**Export Operations XML** (`model.operations`) derives an explicit `<lhs>`/`<rhs>` —
+LHS nodes carry `<cond>` attribute conditions, RHS nodes carry `<set>` assignments:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -432,18 +491,80 @@ function zebra(api) {
 }
 ```
 
-The `api` exposes `nodes`, `context`, lookups (`byId` / `byName` / `byClass` /
-`byType`) and mutators (`setBackground`, `setStyle`, `setFontSize`, `hide`, `show`).
-When a firing ADAPTML rule names a code operation, the Preview runs it over the host.
+The `api` can read and **fully reshape the runtime graph** (the IFML and Style editor
+models are never touched — only this preview's runtime copy):
 
-**Event refinements.** Pick an IFML event and attach code that runs when the event is
-triggered in the Preview. Here the `api` also offers `setContext(key, value)`, which
-persists and re-adapts — so an event can drive the rest of the model:
+- **Read** — `nodes`, `context`, `byId` / `byName` / `byClass` / `byType`.
+- **Change** — `setBackground`, `setStyle`, `setFontSize`, `setName`, `setClass`,
+  `hide`, `show`.
+- **Create** — `createElement({ type, className, name, parent, props })` adds a new
+  runtime IFML element (nested in a parent), `connect(a, b, relation?)` adds a relation
+  edge (e.g. a navigation flow).
+- **Delete** — `deleteElement(node)` (cascades to its contents), `disconnect(a, b)`.
+- **Style at runtime** — `createStyleRule({ selectorKind, selector, props })` applies a
+  style rule to the matching runtime elements only.
+
+When a firing ADAPTML rule names a code operation, the Preview runs it over the host.
+For example, this operation **iterates a list and creates new posts in the feed**:
 
 ```js
-// Refine the 'Feed' event: jump the clock to the evening -> the dark-mode rule fires.
-api.setContext('time', '22');
+function extraPosts(api) {
+  var feed = api.byClass('feedgrid')[0];
+  [{ who: 'AdaptUI Bot', text: 'Created from code 🤖' }].forEach(function (item) {
+    var post = api.createElement({ type: 'ViewContainer', className: 'post', name: item.who, parent: feed });
+    api.createElement({ type: 'ViewComponent', className: 'author', name: item.who, parent: post });
+    api.createElement({ type: 'ViewComponent', className: 'postbody', name: item.text, parent: post });
+  });
+  api.createStyleRule({ selectorKind: 'class', selector: 'post', props: { borderColor: '#6366f1', borderWidth: '2' } });
+}
 ```
+
+**Event refinements.** Pick an IFML event — a drawn one, or a **default lifecycle
+event** every ViewContainer has (see below) — and attach code that runs when it is
+triggered in the Preview. Here the `api` also offers:
+
+- `setContext(key, value)` — persists and re-adapts, so an event can drive the model.
+- `navigate(container)` — switch the Preview to another container/view by name or id.
+- `blockNavigation()` — cancel the event's normal navigation flow to another container.
+- `api.self` — the ViewContainer the event belongs to (its "self"), so a refinement can
+  change *its own* container (this is also why a self-reference flow, event → its own
+  ViewContainer, is allowed and simply re-runs the operations on trigger).
+
+```js
+// Refine the 'Sign In' event: navigation handled in code, not the static flow.
+api.blockNavigation();                 // cancel the normal flow to another container
+if (Number(api.context.time) < 20) {
+  api.navigate('News Feed');           // navigate to a container by code (daytime only)
+}
+```
+
+**Default lifecycle events.** Every ViewContainer automatically has `onLoad`,
+`onChange` and `onTerminate` events (listed in the Code tab as *`<Container> · onLoad`*
+etc.). The Preview fires them when the container becomes the active view (**onLoad**),
+when the context changes while it is shown (**onChange**), and when it is left
+(**onTerminate**) — and they are refinable like any event. Example — a welcome card
+pinned the first time the feed loads:
+
+```js
+// 'News Feed · onLoad'
+if (!api.byName('Welcome')) {
+  var feed = api.byClass('feedgrid')[0];
+  var post = api.createElement({ type: 'ViewContainer', className: 'post', name: 'Welcome', parent: feed });
+  api.createElement({ type: 'ViewComponent', className: 'postbody', name: 'Loaded ' + api.self.name, parent: post });
+}
+```
+
+**Persistence — event refinements are permanent, code operations are transient.**
+The graph mutations an event refinement makes (`createElement`, `deleteElement`,
+`setStyle`, `createStyleRule`, …) are recorded into a **runtime overlay** that becomes
+part of the rebuilt runtime model on every recompute — so they **persist** as you
+adapt the context, **switch ViewContainers and back**, etc. (they are the *changes done
+through the called events* that seed the runtime model). **Code operations**, by
+contrast, are adaptations: they are re-derived from scratch on every recompute and
+never accumulate. The overlay lives only in memory: it is cleared by a **browser/tab
+reload** or the **Reset runtime** button in the Preview's view bar. (Context changes
+via `setContext` and navigation are not part of the overlay — they act through the
+context model and the active view.)
 
 Code runs in the browser via `new Function` — it's your own code in your own session
 (a prototyping facility), not a sandbox.
@@ -511,6 +632,10 @@ runtime**:
    operation's graph transformation is applied to a runtime copy of the IFML graph
    (changing visibility or any style property, creating/deleting nodes/edges). The
    status line shows how many rules are currently applied.
+5. **Full-screen** — the *Fullscreen* button runs the app on its own, covering the
+   whole window with no AdaptUI editor chrome (as if it were the deployed app, not a
+   browser full-screen). A floating ⚙ control opens an in-app menu to **edit the
+   context properties**, **reset** the runtime and **exit** full-screen.
 
 The matching-and-rewriting logic lives in a small, dependency-free module,
 [`adaptation-engine.ts`](adaptui-frontend/src/app/preview/adaptation-engine.ts).
@@ -532,16 +657,22 @@ flex/grid layout, gradients, cards and controls, and the Preview's page-style ro
 
 It also ships time-driven adaptations:
 
-- **Daytime** (`Time` < 20) — a **code operation** `zebra` (defined in the Code tab)
-  stripes the post cards by index, showing a code function used as an operation.
+- **Daytime** (`Time` < 20) — two **code operations** (defined in the Code tab):
+  `zebra` stripes the post cards by index, and `extraPosts` **creates new runtime
+  posts** in the feed and adds a runtime-only accent border via `createStyleRule`.
 - **Evening** (`Time` ≥ 20) — two modelled operations (*Dark surfaces*, *Dark text*)
-  switch the whole app to a dark theme.
-- **Event refinements** (Code tab) — the *Feed* button jumps the clock to 22:00 (going
-  dark) and *Log out* resets it to 09:00 (going light), so triggering those events
-  re-adapts the UI via code.
+  switch the whole app to a dark theme (and the code-created posts disappear).
+- **Event refinements** (Code tab) — *Feed* jumps the clock to 22:00 (dark) and
+  *Log out* to 09:00 (light); **Sign In** is handled in code: it `blockNavigation()`s
+  the static flow and `navigate('News Feed')`s only during the day, so after 20:00
+  sign-in is blocked; **New Post** appends a runtime post to the feed that **persists**
+  (click it a few times, then change the time — the posts stay) until you press
+  **Reset runtime** or reload.
+- **Lifecycle event** (Code tab) — *News Feed · onLoad* pins a runtime **Welcome**
+  card the first time the feed is shown (using `api.self`).
 
-Set the *Time* value in the Preview's Context side menu — or click *Feed* / *Log out* —
-to see day/night flip live.
+Set the *Time* value in the Preview's Context side menu — or click the controls — to
+see the runtime graph and theme change live.
 
 ---
 
@@ -549,8 +680,7 @@ to see day/night flip live.
 
 - Round-trip **import** of the exported XML back into the canvases.
 - Per-side spacing (individual margins/padding) and reusable style presets/themes in the Style DSL.
-- Make a self-targeting event carry real state (form input, toggles) so it visibly changes its own view.
-- Fuller graph-transformation support (negative application conditions, attribute conditions in the LHS).
+- Fuller graph-transformation support (attribute comparison operators in the LHS, multi-node NAC palette).
 - More IFML constructs (parameter bindings, data flows, actions, modules); persisting models server-side and code generation.
 
 ---

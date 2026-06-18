@@ -32,6 +32,20 @@
           class="view-tab"
           [class.active]="v.id === activeViewId"
           (click)="setActiveView(v.id)">{{ v.name }}</button>
+        <span class="view-bar-spacer"></span>
+        <button
+          class="reset-btn"
+          (click)="enterFullscreen()"
+          matTooltip="Run the app full-screen, without the AdaptUI editor chrome">
+          <mat-icon>fullscreen</mat-icon> Fullscreen
+        </button>
+        <button
+          class="reset-btn"
+          [disabled]="!hasRuntimeChanges"
+          (click)="resetRuntime()"
+          matTooltip="Discard runtime changes made by event code (also cleared on reload)">
+          <mat-icon>restart_alt</mat-icon> Reset runtime
+        </button>
       </div>
       <div class="stage-inner" *ngIf="activeView as av">
         <ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: av }"></ng-container>
@@ -42,6 +56,43 @@
     </ng-template>
   </section>
 
+</div>
+
+<!-- Full-screen "app" mode: just the rendered UI, no AdaptUI editor chrome -->
+<div class="fs-overlay" *ngIf="fullscreen">
+  <div class="fs-stage">
+    <ng-container *ngIf="activeView as av">
+      <ng-container *ngTemplateOutlet="nodeTpl; context: { $implicit: av }"></ng-container>
+    </ng-container>
+  </div>
+
+  <!-- Floating control: opens the settings menu -->
+  <button class="fs-fab" (click)="fsMenuOpen = !fsMenuOpen" [class.open]="fsMenuOpen"
+          matTooltip="Settings" aria-label="Preview settings">
+    <mat-icon>{{ fsMenuOpen ? 'close' : 'tune' }}</mat-icon>
+  </button>
+
+  <div class="fs-menu" *ngIf="fsMenuOpen">
+    <div class="fs-menu-title">Context</div>
+    <div class="fs-empty" *ngIf="activatedContext.length === 0">
+      No context factors enabled (CONTEXTML tab).
+    </div>
+    <label class="field" *ngFor="let p of activatedContext">
+      <span>{{ p.label }}</span>
+      <select *ngIf="p.type === 'enum'" [(ngModel)]="p.value" (ngModelChange)="onContextValue(p.key, p.value)">
+        <option *ngFor="let v of p.values || []" [value]="v">{{ v }}</option>
+      </select>
+      <input *ngIf="p.type === 'number'" type="number" [(ngModel)]="p.value" (ngModelChange)="onContextValue(p.key, p.value)">
+    </label>
+    <div class="fs-actions">
+      <button class="fs-action" [disabled]="!hasRuntimeChanges" (click)="resetRuntime()">
+        <mat-icon>restart_alt</mat-icon> Reset preview
+      </button>
+      <button class="fs-action fs-exit" (click)="exitFullscreen()">
+        <mat-icon>fullscreen_exit</mat-icon> Exit full-screen
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- Recursive renderer for a runtime node -->
@@ -62,7 +113,7 @@
     <input *ngSwitchCase="'inputField'" class="ctrl-input" [ngStyle]="nodeStyle(node)" [placeholder]="node.name" (change)="onTrigger(node)">
     <a *ngSwitchCase="'link'" class="ctrl-link" [ngStyle]="nodeStyle(node)" href="javascript:void(0)" (click)="onTrigger(node)">{{ node.name }}</a>
     <ng-container *ngSwitchDefault>
-      <div class="rt-head" *ngIf="!node.children.length || node.created">
+      <div class="rt-head" *ngIf="!node.children.length">
         <span class="rt-name">{{ node.name }}</span>
         <span class="rt-badge" *ngIf="node.created">new</span>
       </div>

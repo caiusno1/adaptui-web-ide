@@ -11,14 +11,12 @@ import { IfmlModelService } from '../services/ifml-model.service';
 import { ProjectService } from '../services/project.service';
 import { StyleModelService } from '../services/style-model.service';
 
-declare var mxGraph: any;
-declare var mxUtils: any;
-declare var mxRubberband: any;
-declare var mxConstants: any;
-declare var mxClient: any;
-declare var mxGraphModel: any;
-declare var mxEvent: any;
-declare var mxKeyHandler: any;
+// Graph primitives via the build-selected backend: maxGraph by default, or the
+// legacy global mxGraph via the `mxgraph` build flag. See ../graph/graph-backend.
+import {
+  mxGraph, mxGraphModel, mxClient, mxEvent, mxRubberband, mxKeyHandler,
+  mxConstants, mxUtils, cellStyleName,
+} from '../graph/graph-backend';
 
 /**
  * Editor for the Style DSL — a minimalist concretization language for IFML.
@@ -26,6 +24,7 @@ declare var mxKeyHandler: any;
  * background colour) to IFML elements selected by id or adaptation class.
  */
 @Component({
+  standalone: false,
   selector: 'app-style-ml',
   templateUrl: './style-ml.component.html',
   styleUrls: ['./style-ml.component.sass'],
@@ -139,7 +138,7 @@ export class StyleMlComponent implements OnInit, AfterViewInit, OnDestroy {
         const g = cell.geometry || {};
         vertices.push({
           id: cell.id, x: g.x || 0, y: g.y || 0, w: g.width || 0, h: g.height || 0,
-          style: cell.style || 'styleRuleStyle', value: '', data: { ...data, props: { ...data.props } },
+          style: cellStyleName(cell) || 'styleRuleStyle', value: '', data: { ...data, props: { ...data.props } },
         });
       }
     }
