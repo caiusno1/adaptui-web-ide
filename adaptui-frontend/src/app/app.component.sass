@@ -66,4 +66,20 @@ mat-tab-group#mainViewSelect
   border-radius: 6px
   background: #fff
 
+// --- Mobile design set: let the project bar wrap on small screens (≤820px) ---
+@media (max-width: 820px)
+  .project-bar
+    flex-wrap: wrap
+    gap: 6px
+    padding: 6px 10px
+  .project-bar .pb-name
+    flex: 1 1 140px
+    min-width: 0
+  .project-bar .pb-spacer
+    display: none
+  .project-bar .pb-open
+    flex: 1 1 100%
+  .project-bar .pb-select
+    flex: 1 1 auto
+
 

@@ -107,7 +107,7 @@ The pieces compose like this:
 - **Angular 20** (`@angular/*` 20.x) + **TypeScript 5.9**, built with the esbuild-based `@angular/build:application` builder
 - **Angular Material 20** for the shell (toolbar, tabs, buttons, tooltips, checkboxes)
 - **[maxGraph](https://github.com/maxGraph/maxGraph) 0.23** for the diagramming canvases (the maintained TypeScript successor to mxGraph) — or legacy **[mxGraph](https://github.com/jgraph/mxgraph) 4.2** via a build flag, behind a shared separation layer
-- **SASS** (indented syntax) for component styles
+- **SASS** (indented syntax) for component styles, with a **mobile design set** (a responsive `@media (max-width: 820px)` layer that stacks every editor's panel above a full-width canvas and reflows the shell / Preview for phones)
 - **Karma + Jasmine** for unit tests
 
 ---

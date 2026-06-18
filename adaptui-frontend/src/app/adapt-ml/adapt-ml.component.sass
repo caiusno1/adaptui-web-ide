@@ -130,3 +130,22 @@
   background-color: #f4f6f8
   background-image: radial-gradient(#d4dde4 1px, transparent 1px)
   background-size: 20px 20px
+
+// --- Mobile design set: stack the panel above a full-width canvas (≤820px) ---
+@media (max-width: 820px)
+  .adapt-editor
+    flex-direction: column
+    height: auto
+    min-height: 0
+  .adapt-side
+    flex: 0 0 auto
+    width: auto
+    max-height: 40vh
+    border-right: none
+    border-bottom: 1px solid #e0e0e0
+  .adapt-canvas-wrap
+    flex: 0 0 auto
+  .adapt-graph
+    flex: 0 0 auto
+    height: 60vh
+    min-height: 320px
