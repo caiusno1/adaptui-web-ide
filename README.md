@@ -40,8 +40,12 @@ by this editor are:
 - **Navigation Flow** — a directed connection (an **arrow**) from an event to a target view element, expressing "when this happens, go there".
 - **Annotation** — a free-text note. In this editor annotations also carry AdaptUI generator hints (e.g. `ADAPTUI-ANNOTATION-STYLE=EDIT`).
 
-Each IFML element additionally links to an **adaptation class** (see below), which
-declares the properties an adaptation may change on it.
+Each IFML element also carries a **class**, set in the editor's property panel (type a
+new name to create one on the spot). The class is the hook the rest of the model targets:
+the **Style** editor's *by class* rules style every element that shares it, and **ADAPTML**
+adaptations select on it (the class also declares the properties an adaptation may change).
+The panel's **Parent container** dropdown re-declares containment when the canvas did not
+nest an element automatically.
 
 ---
 

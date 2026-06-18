@@ -25,7 +25,7 @@
       </span>
     </div>
 
-    <!-- Properties of the selected element (name + adaptation class) -->
+    <!-- Properties of the selected element (name, containment, class) -->
     <div class="props-panel" *ngIf="selected">
       <h4>{{ selected.type }}</h4>
       <label class="field">
@@ -33,12 +33,26 @@
         <input type="text" [(ngModel)]="selected.name" (ngModelChange)="onNameChange($event)">
       </label>
       <label class="field">
-        <span>Adaptation class</span>
-        <select [(ngModel)]="selected.className" (ngModelChange)="onClassChange($event)">
-          <option *ngFor="let c of adaptationClasses" [value]="c.name">{{ c.label }}</option>
+        <span>Parent container</span>
+        <select [ngModel]="selectedParentId" (ngModelChange)="onParentChange($event)">
+          <option value="">— top level —</option>
+          <option *ngFor="let p of parentOptions" [value]="p.id">{{ p.name }}</option>
         </select>
       </label>
-      <div class="props-changeable">Changeable: {{ selectedChangeable }}</div>
+      <label class="field">
+        <span>Class (styling &amp; adaptation)</span>
+        <input type="text" list="ifml-class-list" [(ngModel)]="selected.className"
+               (change)="onClassChange()" placeholder="e.g. card, post, field">
+        <datalist id="ifml-class-list">
+          <option *ngFor="let c of adaptationClasses" [value]="c.name">{{ c.label }}</option>
+        </datalist>
+      </label>
+      <p class="props-hint">
+        The <b>class</b> tags this element for the <b>Style</b> editor (a “by class” rule
+        styles every element sharing the class) and for <b>ADAPTML</b> adaptations.
+        Type a new name to create a class.
+      </p>
+      <div class="props-changeable" *ngIf="selectedChangeable">Changeable: {{ selectedChangeable }}</div>
     </div>
   </aside>
 

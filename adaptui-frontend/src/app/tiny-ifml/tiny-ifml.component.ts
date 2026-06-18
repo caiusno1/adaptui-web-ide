@@ -1,15 +1,16 @@
-import { AfterViewInit, Component, ElementRef, NgZone, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, NgZone, OnDestroy, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
 import { AdaptationClass, IfmlElementRef } from '../model/adaptation.model';
 import { GraphSnapshot, GraphVertex } from '../model/project.model';
 import { IfmlFlow } from '../model/transformation.model';
 import { AdaptationClassService } from '../services/adaptation-class.service';
 import { IfmlModelService } from '../services/ifml-model.service';
 import { ProjectService } from '../services/project.service';
+import { Subscription } from 'rxjs';
 // Graph primitives come from the build-selected backend: maxGraph by default,
 // or the legacy global mxGraph via the `mxgraph` build flag. The separation
 // layer (../graph/graph-backend) exposes one uniform mxGraph-style surface.
 import {
-  mxGraph, mxGraphModel, mxClient, mxEvent, mxRubberband, mxKeyHandler,
+  mxGraph, mxGraphModel, mxGeometry, mxClient, mxEvent, mxRubberband, mxKeyHandler,
   mxConstants, mxPerimeter, mxEdgeStyle, mxUtils, cellStyleName, registerBoxShape,
 } from '../graph/graph-backend';
 
@@ -40,7 +41,7 @@ export interface IfmlPaletteItem {
   templateUrl: './tiny-ifml.component.html',
   styleUrls: ['./tiny-ifml.component.sass']
 })
-export class TinyIfmlComponent implements OnInit, AfterViewInit {
+export class TinyIfmlComponent implements OnInit, OnDestroy, AfterViewInit {
 
   @ViewChild('graphContainer')
   containerElementRef!: ElementRef;
@@ -84,8 +85,16 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     private projectService: ProjectService,
   ) { }
 
+  /** Keeps the class list (combobox datalist + Style selector options) current. */
+  private classSub?: Subscription;
+
   ngOnInit(): void {
     this.adaptationClasses = this.classService.classes;
+    this.classSub = this.classService.classes$.subscribe((cs) => { this.adaptationClasses = cs; });
+  }
+
+  ngOnDestroy(): void {
+    this.classSub?.unsubscribe();
   }
 
   get container() {
@@ -290,6 +299,7 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
       }
     }
     this.ifmlService.setModel(refs, flows);
+    this.refreshContainment();
   }
 
   private onSelectionChanged(): void {
@@ -305,6 +315,7 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     } else {
       this.selected = null;
     }
+    this.refreshContainment();
   }
 
   /** Renames the selected element (panel input). */
@@ -320,13 +331,93 @@ export class TinyIfmlComponent implements OnInit, AfterViewInit {
     }
   }
 
-  /** Reassigns the selected element's adaptation class (panel select). */
-  onClassChange(className: string): void {
+  /**
+   * Commits the selected element's class (panel combobox). The class is the hook
+   * the Style DSL and ADAPTML rules select on, so a freshly typed name is also
+   * registered as an adaptation class — which makes it available as a selector
+   * in the Style editor and anywhere else classes are listed.
+   */
+  onClassChange(): void {
     if (!this.selected) {
       return;
     }
-    this.meta.set(this.selected.cellId, className);
-    this.selected.className = className;
+    const name = (this.selected.className || '').trim();
+    this.selected.className = name;
+    this.meta.set(this.selected.cellId, name);
+    if (name && !this.classService.getClass(name)) {
+      this.classService.addClass({ name, label: name, properties: [] });
+    }
+    this.publishElements();
+  }
+
+  // --------------------------------------------------------------------------
+  // Manual containment — declare a parent the auto-nesting did not pick up
+  // --------------------------------------------------------------------------
+
+  /** Parent-container options for the selected element, and its current parent
+   *  id. Held as fields (recomputed only on selection / structural change) so the
+   *  template keeps a stable binding reference and change detection stabilises. */
+  parentOptions: Array<{ id: string; name: string }> = [];
+  selectedParentId = '';
+
+  /** Recomputes {@link parentOptions} / {@link selectedParentId} from the current
+   *  selection. Containers that are the element itself or its descendants are
+   *  excluded to prevent a containment cycle. */
+  private refreshContainment(): void {
+    if (!this.graph || !this.selected) {
+      this.parentOptions = [];
+      this.selectedParentId = '';
+      return;
+    }
+    const model = this.graph.getModel();
+    const sel = model.getCell(this.selected.cellId);
+    if (!sel) {
+      this.parentOptions = [];
+      this.selectedParentId = '';
+      return;
+    }
+    const banned = new Set<string>([sel.id, ...model.getDescendants(sel).map((c: any) => c.id)]);
+    this.parentOptions = model.getDescendants(this.graph.getDefaultParent())
+      .filter((c: any) => this.isViewContainer(c) && !banned.has(c.id))
+      .map((c: any) => ({ id: c.id, name: this.cleanName(c.value) || 'ViewContainer' }));
+    const parent = model.getParent(sel);
+    this.selectedParentId = parent && this.isViewContainer(parent) ? parent.id : '';
+  }
+
+  /** Re-parents the selected element into the chosen container (or to the top
+   *  level), fixing containment the editor did not recognise automatically. */
+  onParentChange(parentCellId: string): void {
+    if (!this.graph || !this.selected) {
+      return;
+    }
+    const graph = this.graph;
+    const model = graph.getModel();
+    const cell = model.getCell(this.selected.cellId);
+    if (!cell) {
+      return;
+    }
+    const root = graph.getDefaultParent();
+    const newParent = parentCellId ? model.getCell(parentCellId) : root;
+    if (!newParent || newParent === model.getParent(cell)) {
+      return;
+    }
+    // Guard against cycles: cannot nest an element into itself or a descendant.
+    const banned = new Set<string>([cell.id, ...model.getDescendants(cell).map((c: any) => c.id)]);
+    if (parentCellId && banned.has(parentCellId)) {
+      return;
+    }
+    model.beginUpdate();
+    try {
+      model.add(newParent, cell);
+      const g = cell.geometry;
+      if (g && newParent !== root) {
+        const offset = (this.clickInsertCount++ % 6) * 16;
+        model.setGeometry(cell, new mxGeometry(16 + offset, 30 + offset, g.width, g.height));
+      }
+    } finally {
+      model.endUpdate();
+    }
+    graph.setSelectionCell(cell);
     this.publishElements();
   }
 
