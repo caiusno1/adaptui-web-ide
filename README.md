@@ -234,8 +234,19 @@ npm run build      # outputs to dist/adaptui-frontend
 
 ```bash
 cd adaptui-frontend
-npm test           # runs the Karma/Jasmine unit tests
+npm test                # runs the Karma/Jasmine unit tests
+npm run test:pipeline   # headless end-to-end test that rebuilds the whole model from scratch
 ```
+
+`preview/pipeline-from-scratch.spec.ts` reconstructs the entire background model by
+hand — IFML elements + containment + navigation flows, Style DSL rules, an Operation
+and an ADAPTML rule, plus a context property — with **no seed**, then runs the exact
+Preview pipeline (`buildHostGraph → applyOverlay → runAdaptation → buildRenderTree`)
+and asserts the resulting visualization: two views nested by containment, the styled
+login card, the Sign In event rendered as a button that navigates to the News Feed,
+and the News Feed turning dark at night (Time ≥ 21). It confirms the full workflow is
+reproducible from the model the editors publish, and (being free of the DOM and the
+graph library) runs identically on either graph backend.
 
 ---
 
