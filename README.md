@@ -248,6 +248,20 @@ and the News Feed turning dark at night (Time ≥ 21). It confirms the full work
 reproducible from the model the editors publish, and (being free of the DOM and the
 graph library) runs identically on either graph backend.
 
+### Deploy to GitHub Pages
+
+The workflow [`.github/workflows/deploy-gh-pages.yml`](.github/workflows/deploy-gh-pages.yml)
+builds the app and publishes **just the app** to the root of the `gh-pages` branch on
+every push to `main` (or via *Actions → Deploy to GitHub Pages → Run workflow*). The
+build sets `<base href="/adaptui-web-ide/">` so it works as a project site; the source
+`index.html` keeps `<base href="/">` for local `ng serve`.
+
+One-time, after the first successful run: **Settings → Pages → Source: “Deploy from a
+branch” → `gh-pages` / `(root)`**. The site is then served at
+<https://caiusno1.github.io/adaptui-web-ide/>.
+
+To reproduce the Pages build locally: `npm run build:pages`.
+
 ---
 
 ## Projects
