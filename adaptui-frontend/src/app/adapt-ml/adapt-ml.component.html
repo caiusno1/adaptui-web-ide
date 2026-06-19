@@ -128,9 +128,10 @@
   <!-- Textual DSL editor (code completion + syntax highlighting) -->
   <div class="adapt-text" *ngIf="mode === 'text'">
     <p class="dsl-hint">
-      One rule per line — <code>when &lt;condition&gt; then &lt;operation&gt;</code>. Combine conditions
-      with <code>and</code> / <code>or</code> (parentheses to group), e.g.
-      <code>when time &gt;= 20 and deviceType == phone then Dark surfaces</code>.
+      One rule per line — <code>when &lt;condition&gt; then &lt;action&gt;</code>. Combine conditions
+      with <code>and</code> / <code>or</code> (parentheses to group), and list several actions after
+      <code>then</code> separated by commas, e.g.
+      <code>when time &gt;= 20 then Dark surfaces, Dark text</code>.
       Press <kbd>Ctrl</kbd>+<kbd>Space</kbd> for suggestions.
     </p>
     <app-dsl-editor

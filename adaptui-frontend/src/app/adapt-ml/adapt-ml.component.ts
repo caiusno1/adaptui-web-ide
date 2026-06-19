@@ -712,19 +712,40 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
       return { cell, y };
     };
 
+    // Group rules sharing a condition so one condition node feeds all its operations.
+    const groups: { expr: BoolExpr; ops: string[] }[] = [];
+    for (const rule of rules) {
+      if (!rule.expr || !rule.operationName) {
+        continue;
+      }
+      const key = JSON.stringify(rule.expr);
+      let group = groups.find((g) => JSON.stringify(g.expr) === key);
+      if (!group) {
+        group = { expr: rule.expr, ops: [] };
+        groups.push(group);
+      }
+      if (!group.ops.includes(rule.operationName)) {
+        group.ops.push(rule.operationName);
+      }
+    }
+
     this.loading = true;
     model.beginUpdate();
     try {
       graph.removeCells(graph.getChildCells(parent, true, true));
       this.nodeData.clear();
-      for (const rule of rules) {
-        if (!rule.expr || !rule.operationName) {
-          continue;
+      for (const group of groups) {
+        const bandTop = yCursor;
+        const root = place(group.expr, 0);
+        const condBottom = yCursor;
+        // Stack the operation nodes on the right, each fed by the shared condition.
+        let opY = bandTop;
+        for (const opName of group.ops) {
+          const opCell = mk({ kind: 'operation', operation: { operationName: opName } }, 'operationStyle', OP_X, opY, 210, 72);
+          graph.insertEdge(parent, null, '', root.cell, opCell);
+          opY += ROW_H;
         }
-        const root = place(rule.expr, 0);
-        const opCell = mk({ kind: 'operation', operation: { operationName: rule.operationName } }, 'operationStyle', OP_X, root.y, 210, 72);
-        graph.insertEdge(parent, null, '', root.cell, opCell);
-        yCursor += BAND_GAP;
+        yCursor = Math.max(condBottom, opY) + BAND_GAP;
       }
     } finally {
       model.endUpdate();

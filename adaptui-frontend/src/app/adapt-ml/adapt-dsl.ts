@@ -19,12 +19,26 @@ const PREC: Record<GateOp, number> = { or: 1, and: 2 };
 // Serialize: rules -> text
 // ---------------------------------------------------------------------------
 
-/** Renders adaptation rules to DSL text (condition-less rules never fire, so are omitted). */
+/** Renders adaptation rules to DSL text, grouping rules that share a condition
+ *  so one line can activate several actions (`when <cond> then <op1>, <op2>`).
+ *  Condition-less rules never fire, so are omitted. */
 export function serializeAdaptmlRules(rules: AdaptmlRule[]): string {
-  return rules
-    .filter((r) => r.expr && r.operationName)
-    .map((r) => `when ${exprToText(r.expr as BoolExpr)} then ${r.operationName}`)
-    .join('\n');
+  const groups: { condition: string; ops: string[] }[] = [];
+  for (const r of rules) {
+    if (!r.expr || !r.operationName) {
+      continue;
+    }
+    const condition = exprToText(r.expr);
+    let group = groups.find((g) => g.condition === condition);
+    if (!group) {
+      group = { condition, ops: [] };
+      groups.push(group);
+    }
+    if (!group.ops.includes(r.operationName)) {
+      group.ops.push(r.operationName);
+    }
+  }
+  return groups.map((g) => `when ${g.condition} then ${g.ops.join(', ')}`).join('\n');
 }
 
 function exprToText(e: BoolExpr): string {
@@ -66,7 +80,7 @@ export function parseAdaptmlDsl(text: string): DslParseResult {
       return;
     }
     try {
-      rules.push(parseRuleLine(line));
+      rules.push(...parseRuleLine(line));
     } catch (e) {
       errors.push({ line: i + 1, message: (e as Error).message });
     }
@@ -83,7 +97,8 @@ function stripComment(s: string): string {
   return cut >= 0 ? s.slice(0, cut) : s;
 }
 
-function parseRuleLine(line: string): AdaptmlRule {
+/** Parses one `when … then …` line into one rule per (comma-separated) action. */
+function parseRuleLine(line: string): AdaptmlRule[] {
   const m = /^when\b([\s\S]*?)\bthen\b([\s\S]*)$/i.exec(line);
   if (!m) {
     if (!/^when\b/i.test(line)) {
@@ -92,14 +107,16 @@ function parseRuleLine(line: string): AdaptmlRule {
     throw new Error('missing "then <operation>"');
   }
   const exprStr = m[1].trim();
-  const operationName = m[2].trim();
   if (!exprStr) {
     throw new Error('missing a condition after "when"');
   }
-  if (!operationName) {
+  // One or more comma-separated actions may follow `then`.
+  const ops = m[2].split(',').map((o) => o.trim()).filter((o) => o.length > 0);
+  if (ops.length === 0) {
     throw new Error('missing an operation name after "then"');
   }
-  return { expr: parseExpr(exprStr), operationName };
+  const expr = parseExpr(exprStr);
+  return ops.map((operationName) => ({ expr, operationName }));
 }
 
 type TokType = 'lparen' | 'rparen' | 'and' | 'or' | 'op' | 'ident' | 'num';

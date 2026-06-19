@@ -612,13 +612,16 @@ switch to text, and text → graph (re-laid-out) when you switch back after edit
 one rule per line:
 
 ```
-when time >= 20 then Dark surfaces
+when time >= 20 then Dark surfaces, Dark text
 when age > 50 and environment == outdoor then largeText
 when deviceType == phone or deviceType == tablet then mobileLayout
 ```
 
 A condition is `<contextKey> <operator> <value>`; combine conditions with `and` / `or` and
-group with parentheses (`and` binds tighter than `or`). `# …` and `// …` are comments. The
+group with parentheses (`and` binds tighter than `or`). **One condition can drive several
+actions** — list them after `then`, comma-separated (`then Dark surfaces, Dark text`), the
+same as drawing arrows from a single Condition to several Operations in the graphical editor.
+`# …` and `// …` are comments. The
 editor is built on **CodeMirror 6** and provides syntax highlighting and context-aware
 completion (<kbd>Ctrl</kbd>+<kbd>Space</kbd>): keywords and *activated* context-property keys
 in the condition part, and the defined operation names after `then`. Edits parse live with a
