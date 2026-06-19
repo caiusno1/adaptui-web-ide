@@ -90,6 +90,11 @@ export class DslEditorComponent implements AfterViewInit, OnChanges, OnDestroy {
     this.view?.destroy();
   }
 
+  /** Re-measures the editor — call after it becomes visible (e.g. its panel expands). */
+  refresh(): void {
+    this.view?.requestMeasure();
+  }
+
   /** Context-aware completion: operations after `then`, else keywords + property keys. */
   private complete(ctx: CompletionContext): CompletionResult | null {
     const word = ctx.matchBefore(/[\w-]*/);

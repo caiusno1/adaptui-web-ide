@@ -13,6 +13,7 @@ import { ContextModelService } from '../services/context-model.service';
 import { OperationModelService } from '../services/operation-model.service';
 import { ProjectService } from '../services/project.service';
 import { parseAdaptmlDsl, serializeAdaptmlRules } from './adapt-dsl';
+import { DslEditorComponent } from '../dsl-editor/dsl-editor.component';
 
 // Graph primitives via the build-selected backend: maxGraph by default, or the
 // legacy global mxGraph via the `mxgraph` build flag. See ../graph/graph-backend.
@@ -52,6 +53,9 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
 
   @ViewChildren('paletteButton', { read: ElementRef })
   paletteButtons!: QueryList<ElementRef>;
+
+  @ViewChild(DslEditorComponent)
+  private dslEditor?: DslEditorComponent;
 
   paletteItems: AdaptPaletteItem[] = [
     { kind: 'condition', label: 'Condition', icon: 'rule', width: 180, height: 90, style: 'conditionStyle' },
@@ -299,10 +303,10 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     graph.getSelectionModel().addListener(mxEvent.CHANGE, () => {
       this.zone.run(() => this.onSelectionChanged());
     });
-    // Publish the rules to the Preview whenever the model changes.
+    // Publish the rules (and live-sync the DSL text) whenever the model changes.
     graph.getModel().addListener(mxEvent.CHANGE, () => {
       if (!this.loading) {
-        this.zone.run(() => this.publishRules());
+        this.zone.run(() => this.syncFromGraph());
       }
     });
   }
@@ -631,28 +635,39 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   // Textual DSL ⇄ graphical model
   // --------------------------------------------------------------------------
 
-  /** Switches to the textual DSL, serialising the current graph rules to text. */
-  switchToText(): void {
-    if (this.mode === 'text') {
-      return;
+  /** Publishes the rules and live-syncs the DSL text while the graph is the active editor. */
+  private syncFromGraph(): void {
+    this.publishRules();
+    if (this.mode === 'graph') {
+      this.dslText = serializeAdaptmlRules(this.gatherRules());
     }
-    this.dslText = serializeAdaptmlRules(this.gatherRules());
-    this.lastParsedRules = parseAdaptmlDsl(this.dslText).rules;
-    this.dslErrors = [];
-    this.dslDirty = false;
-    this.mode = 'text';
   }
 
-  /** Switches back to the graphical editor, rebuilding it only if the DSL was edited. */
-  switchToGraph(): void {
+  /** Graphical accordion panel opened: rebuild the graph from the DSL if it was edited. */
+  openGraph(): void {
     if (this.mode === 'graph') {
       return;
     }
+    this.mode = 'graph';
     if (this.dslDirty) {
       this.rebuildFromRules(this.lastParsedRules);
       this.dslDirty = false;
     }
-    this.mode = 'graph';
+    // The canvas had no size while collapsed — re-render once it is visible again.
+    setTimeout(() => this.graph?.refresh?.());
+  }
+
+  /** Textual-DSL accordion panel opened: serialise the current graph rules to text. */
+  openText(): void {
+    if (this.mode === 'text') {
+      return;
+    }
+    this.mode = 'text';
+    this.dslText = serializeAdaptmlRules(this.gatherRules());
+    this.lastParsedRules = parseAdaptmlDsl(this.dslText).rules;
+    this.dslErrors = [];
+    this.dslDirty = false;
+    setTimeout(() => this.dslEditor?.refresh());
   }
 
   /** Live edit of the DSL: parse, surface diagnostics and publish the valid rules. */

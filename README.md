@@ -604,12 +604,13 @@ ADAPTML builds adaptation rules out of **Condition**, **AND/OR gate** and
    when its resulting boolean expression is satisfied. Conditions wired directly to an
    operation are AND-combined; an operation with no conditions never fires.
 
-### Textual DSL (toggle at the top of the tab)
+### Textual DSL (accordion in the ADAPTML tab)
 
-The same rules can be edited as **text**. The **Graphical / Textual DSL** toggle at the top
-of the ADAPTML tab switches between the two views, which stay in sync: graph → text when you
-switch to text, and text → graph (re-laid-out) when you switch back after editing. The DSL is
-one rule per line:
+The same rules can be edited as **text**. The ADAPTML tab is an **accordion** with a
+*Graphical model* panel and a *Textual DSL* panel — **only one is open at a time**, the other
+collapsed. The two are **kept in sync in real time**: editing the graph live-updates the DSL
+text, and editing the text updates the model (and rebuilds the graph, re-laid-out, when its
+panel is opened). The DSL is one rule per line:
 
 ```
 when time >= 20 then Dark surfaces, Dark text
