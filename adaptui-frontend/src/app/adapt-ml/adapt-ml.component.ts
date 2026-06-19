@@ -12,6 +12,7 @@ import { CodeModelService } from '../services/code-model.service';
 import { ContextModelService } from '../services/context-model.service';
 import { OperationModelService } from '../services/operation-model.service';
 import { ProjectService } from '../services/project.service';
+import { parseAdaptmlDsl, serializeAdaptmlRules } from './adapt-dsl';
 
 // Graph primitives via the build-selected backend: maxGraph by default, or the
 // legacy global mxGraph via the `mxgraph` build flag. See ../graph/graph-backend.
@@ -70,6 +71,18 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   activatedContext: ContextProperty[] = [];
   operationNames: string[] = [];
 
+  // --- Textual DSL ⇄ graphical mode ---
+  /** Which editor is shown: the graphical canvas or the textual DSL. */
+  mode: 'graph' | 'text' = 'graph';
+  /** The DSL text, kept in sync with the graph on each switch. */
+  dslText = '';
+  /** Per-line parse diagnostics shown while editing the DSL. */
+  dslErrors: string[] = [];
+  /** Context-property keys offered to the DSL editor's autocomplete. */
+  dslPropertyKeys: string[] = [];
+  private dslDirty = false;
+  private lastParsedRules: AdaptmlRule[] = [];
+
   // Current selection for the configuration panel.
   selectedCellId: string | null = null;
   selectedData: AdaptNodeData | null = null;
@@ -89,6 +102,7 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     this.subscriptions.add(
       this.contextService.properties$.subscribe((props) => {
         this.activatedContext = props.filter((p) => p.activated);
+        this.dslPropertyKeys = this.activatedContext.map((p) => p.key);
       })
     );
     // Operations come from both the modelled (Operations tab) and code (Code tab) sources.
@@ -611,6 +625,114 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   /** Publishes the rules so the Preview can evaluate and apply them. */
   private publishRules(): void {
     this.adaptmlService.setRules(this.gatherRules());
+  }
+
+  // --------------------------------------------------------------------------
+  // Textual DSL ⇄ graphical model
+  // --------------------------------------------------------------------------
+
+  /** Switches to the textual DSL, serialising the current graph rules to text. */
+  switchToText(): void {
+    if (this.mode === 'text') {
+      return;
+    }
+    this.dslText = serializeAdaptmlRules(this.gatherRules());
+    this.lastParsedRules = parseAdaptmlDsl(this.dslText).rules;
+    this.dslErrors = [];
+    this.dslDirty = false;
+    this.mode = 'text';
+  }
+
+  /** Switches back to the graphical editor, rebuilding it only if the DSL was edited. */
+  switchToGraph(): void {
+    if (this.mode === 'graph') {
+      return;
+    }
+    if (this.dslDirty) {
+      this.rebuildFromRules(this.lastParsedRules);
+      this.dslDirty = false;
+    }
+    this.mode = 'graph';
+  }
+
+  /** Live edit of the DSL: parse, surface diagnostics and publish the valid rules. */
+  onDslTextChange(text: string): void {
+    this.dslText = text;
+    const parsed = parseAdaptmlDsl(text);
+    this.dslErrors = parsed.errors.map((e) => `Line ${e.line}: ${e.message}`);
+    this.lastParsedRules = parsed.rules;
+    this.dslDirty = true;
+    this.adaptmlService.setRules(parsed.rules);
+  }
+
+  /** True while there is at least one parse error in the DSL. */
+  get dslHasErrors(): boolean {
+    return this.dslErrors.length > 0;
+  }
+
+  /** Number of rules successfully parsed from the current DSL text. */
+  get dslRuleCount(): number {
+    return this.lastParsedRules.length;
+  }
+
+  /** Rebuilds the graph (condition/gate/operation nodes + edges) from rules, tidily laid out. */
+  private rebuildFromRules(rules: AdaptmlRule[]): void {
+    const graph = this.graph;
+    if (!graph) {
+      return;
+    }
+    const model = graph.getModel();
+    const parent = graph.getDefaultParent();
+    const OP_X = 640;
+    const COL_W = 200;
+    const ROW_H = 110;
+    const BAND_GAP = 40;
+    let yCursor = 40;
+
+    const mk = (data: AdaptNodeData, style: string, x: number, y: number, w: number, h: number) => {
+      const v = graph.insertVertex(parent, null, '', x, y, w, h, style);
+      this.nodeData.set(v.id, data);
+      model.setValue(v, this.labelFor(data));
+      return v;
+    };
+    // Lay the expression out left-to-right: leaves on the left, operation on the right.
+    const place = (expr: BoolExpr, depth: number): { cell: any; y: number } => {
+      if (expr.type === 'condition') {
+        const y = yCursor;
+        yCursor += ROW_H;
+        const cell = mk({ kind: 'condition', condition: { ...expr.condition } }, 'conditionStyle', OP_X - (depth + 1) * COL_W, y, 190, 90);
+        return { cell, y };
+      }
+      const kids = expr.children.map((ch) => place(ch, depth + 1));
+      const y = Math.round(kids.reduce((sum, k) => sum + k.y, 0) / kids.length);
+      const cell = mk({ kind: 'gate', gate: { op: expr.op } }, 'gateStyle', OP_X - (depth + 1) * COL_W, y, 90, 50);
+      for (const k of kids) {
+        graph.insertEdge(parent, null, '', k.cell, cell);
+      }
+      return { cell, y };
+    };
+
+    this.loading = true;
+    model.beginUpdate();
+    try {
+      graph.removeCells(graph.getChildCells(parent, true, true));
+      this.nodeData.clear();
+      for (const rule of rules) {
+        if (!rule.expr || !rule.operationName) {
+          continue;
+        }
+        const root = place(rule.expr, 0);
+        const opCell = mk({ kind: 'operation', operation: { operationName: rule.operationName } }, 'operationStyle', OP_X, root.y, 210, 72);
+        graph.insertEdge(parent, null, '', root.cell, opCell);
+        yCursor += BAND_GAP;
+      }
+    } finally {
+      model.endUpdate();
+      this.loading = false;
+    }
+    this.selectedCellId = null;
+    this.selectedData = null;
+    this.publishRules();
   }
 
   private exprToXml(expr: BoolExpr, indent: string): string[] {

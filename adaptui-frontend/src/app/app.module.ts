@@ -15,6 +15,7 @@ import { StyleMlComponent } from './style-ml/style-ml.component';
 import { OperationMlComponent } from './operation-ml/operation-ml.component';
 import { PreviewComponent } from './preview/preview.component';
 import { CodeMlComponent } from './code-ml/code-ml.component';
+import { DslEditorComponent } from './dsl-editor/dsl-editor.component';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {MatButtonModule} from '@angular/material/button';
 import {MatTooltipModule} from '@angular/material/tooltip';
@@ -28,7 +29,8 @@ import {MatTooltipModule} from '@angular/material/tooltip';
     StyleMlComponent,
     OperationMlComponent,
     PreviewComponent,
-    CodeMlComponent
+    CodeMlComponent,
+    DslEditorComponent
   ],
   imports: [
     BrowserModule,

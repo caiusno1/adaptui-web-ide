@@ -108,6 +108,7 @@ The pieces compose like this:
 - **Angular Material 20** for the shell (toolbar, tabs, buttons, tooltips, checkboxes)
 - **[maxGraph](https://github.com/maxGraph/maxGraph) 0.23** for the diagramming canvases (the maintained TypeScript successor to mxGraph) — or legacy **[mxGraph](https://github.com/jgraph/mxgraph) 4.2** via a build flag, behind a shared separation layer
 - **SASS** (indented syntax) for component styles, with a **mobile design set** (a responsive `@media (max-width: 820px)` layer that stacks every editor's panel above a full-width canvas and reflows the shell / Preview for phones)
+- **[CodeMirror 6](https://codemirror.net/)** powers the textual adaptation-DSL editor (syntax highlighting + context-aware completion)
 - **Karma + Jasmine** for unit tests
 
 ---
@@ -151,7 +152,8 @@ adaptui-web-ide/
             ├── style-ml/         ← ★ graphical Style DSL editor (concretization: selector → background colour)
             ├── operation-ml/     ← ★ graphical Operations editor (LHS→RHS graph-transformation rules)
             ├── code-ml/          ← ★ Code editor (functions as operations + event refinements)
-            ├── adapt-ml/         ← ★ graphical ADAPTML editor (conditions → referenced operation)
+            ├── adapt-ml/         ← ★ ADAPTML editor — graphical canvas + textual DSL (toggle); see adapt-dsl.ts
+            ├── dsl-editor/       ← ★ CodeMirror 6 editor component (highlighting + completion) for the DSL
             ├── context-ml/       ← CONTEXTML tab (activate context properties / delete)
             └── preview/          ← ★ live adaptive Preview
                 ├── adaptation-engine.ts  ← pure graph-rewrite engine (build host, match, rewrite, render tree)
@@ -601,6 +603,26 @@ ADAPTML builds adaptation rules out of **Condition**, **AND/OR gate** and
 5. **Draw arrows** condition/gate → gate → operation. The operation fires **only**
    when its resulting boolean expression is satisfied. Conditions wired directly to an
    operation are AND-combined; an operation with no conditions never fires.
+
+### Textual DSL (toggle at the top of the tab)
+
+The same rules can be edited as **text**. The **Graphical / Textual DSL** toggle at the top
+of the ADAPTML tab switches between the two views, which stay in sync: graph → text when you
+switch to text, and text → graph (re-laid-out) when you switch back after editing. The DSL is
+one rule per line:
+
+```
+when time >= 20 then Dark surfaces
+when age > 50 and environment == outdoor then largeText
+when deviceType == phone or deviceType == tablet then mobileLayout
+```
+
+A condition is `<contextKey> <operator> <value>`; combine conditions with `and` / `or` and
+group with parentheses (`and` binds tighter than `or`). `# …` and `// …` are comments. The
+editor is built on **CodeMirror 6** and provides syntax highlighting and context-aware
+completion (<kbd>Ctrl</kbd>+<kbd>Space</kbd>): keywords and *activated* context-property keys
+in the condition part, and the defined operation names after `then`. Edits parse live with a
+per-line diagnostic and publish straight to the Preview.
 
 ## Exporting to ADAPTML XML
 
