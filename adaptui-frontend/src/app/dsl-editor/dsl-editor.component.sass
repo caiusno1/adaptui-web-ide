@@ -1,0 +1,10 @@
+// Host fills its flex parent; CodeMirror's own DOM (.cm-editor / .cm-scroller) is
+// styled via the editor theme in the component, since emulated view-encapsulation
+// styles do not reach the dynamically-created editor elements.
+:host
+  display: block
+  height: 100%
+  min-height: 0
+
+.dsl-host
+  height: 100%
