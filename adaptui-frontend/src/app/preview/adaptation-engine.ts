@@ -200,17 +200,17 @@ function hasConditions(d: PatternNodeData): boolean {
 
 /** Nodes that participate in matching: preserve, delete, or a create node with conditions. */
 function isMatchNode(d: PatternNodeData): boolean {
-  return d.role === 'preserve' || d.role === 'delete' || (d.role === 'create' && hasConditions(d));
+  return d.kind !== 'params' && (d.role === 'preserve' || d.role === 'delete' || (d.role === 'create' && hasConditions(d)));
 }
 
 /** Nodes that match and then overwrite their non-condition attributes (preserve + create-with-conditions). */
 function isModifyNode(d: PatternNodeData): boolean {
-  return d.role === 'preserve' || (d.role === 'create' && hasConditions(d));
+  return d.kind !== 'params' && (d.role === 'preserve' || (d.role === 'create' && hasConditions(d)));
 }
 
 /** A pure add node: a create node with no conditions creates a brand-new element. */
 function isCreateNode(d: PatternNodeData): boolean {
-  return d.role === 'create' && !hasConditions(d);
+  return d.kind !== 'params' && d.role === 'create' && !hasConditions(d);
 }
 
 function nodeMatches(p: PatternNodeData, h: RuntimeNode): boolean {
@@ -807,6 +807,35 @@ const MAX_ADAPTATION_PASSES = 50;
  * modelled (graph-transformation) operation or a code operation; both are transient
  * (re-derived every recompute) and referenced by name.
  */
+/**
+ * Resolves a parameterized operation's argument values into a concrete operation.
+ * RHS assignments of the form `$name` are replaced by `args[name]`; an absent or
+ * empty argument drops the assignment (the attribute is left unset). The clone's
+ * id encodes the args so distinct invocations are applied independently.
+ */
+function substituteParams(op: OperationModel, args?: Record<string, string>): OperationModel {
+  if (!op.params || op.params.length === 0) {
+    return op;
+  }
+  const a = args || {};
+  const nodes = op.nodes.map((n) => {
+    const setProps: Record<string, string> = {};
+    for (const [k, v] of Object.entries(n.data.setProps || {})) {
+      const m = /^\$(.+)$/.exec(v);
+      if (!m) {
+        setProps[k] = v; // literal value
+      } else {
+        const val = a[m[1]];
+        if (val !== undefined && val !== '') {
+          setProps[k] = val; // bound parameter value (else: unset → dropped)
+        }
+      }
+    }
+    return { ...n, data: { ...n.data, setProps } };
+  });
+  return { ...op, id: `${op.id}#${JSON.stringify(a)}`, nodes };
+}
+
 export function runAdaptation(
   base: HostGraph, rules: AdaptmlRule[], ops: OperationModel[], ctxProps: ContextProperty[],
   codeOps: CodeOperation[] = [], styles: StyleRuleData[] = [],
@@ -827,8 +856,8 @@ export function runAdaptation(
       if (!ruleFires(rule, ctx)) {
         continue;
       }
-      const op = opByName.get(rule.operationName);
-      if (!op) {
+      const baseOp = opByName.get(rule.operationName);
+      if (!baseOp) {
         // Not a modelled operation — try a code operation of the same name. Code
         // operations may freely create / change / delete the runtime graph.
         const codeOp = codeByName.get(rule.operationName);
@@ -841,6 +870,8 @@ export function runAdaptation(
         }
         continue;
       }
+      // Resolve parameter bindings ($name) using the rule's supplied arguments.
+      const op = substituteParams(baseOp, rule.args);
       const matches = findMatches(op, host);
       const deleted = new Set<string>();
       for (const m of matches) {

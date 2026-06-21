@@ -57,6 +57,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   paletteItems: OpPaletteItem[] = [
     { kind: 'element', label: 'Element pattern', icon: 'category', width: 170, height: 66 },
     { kind: 'style', label: 'Style pattern', icon: 'palette', width: 180, height: 66 },
+    { kind: 'params', label: 'Parameters', icon: 'tune', width: 200, height: 80 },
   ];
 
   // Option lists for the configuration panel.
@@ -68,6 +69,8 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   operations: OperationModel[] = [];
   currentOpId: string | null = null;
   currentOpName = '';
+  /** New-parameter name input (transformation-parameters box). */
+  newParam = '';
 
   ifmlElements: IfmlElementRef[] = [];
   adaptationClasses: AdaptationClass[] = [];
@@ -220,6 +223,26 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     };
     this.operations.push({ id: `op_${++this.opCounter}`, name: 'Dark surfaces', nodes: [node(surfaces)], edges: [] });
     this.operations.push({ id: `op_${++this.opCounter}`, name: 'Dark text', nodes: [node(text)], edges: [] });
+
+    // A parameterized operation: changeBackgroundColor(color) — a 'params' box declares
+    // `color`, and a preserved ViewContainer sets backgroundColor to that parameter.
+    const cbParams: PatternNodeData = {
+      kind: 'params', role: 'preserve', match: 'any', selectorKind: 'none', selector: '',
+      condProps: {}, setVisible: '', setProps: {}, params: ['color'],
+    };
+    const cbTarget: PatternNodeData = {
+      kind: 'element', role: 'preserve', match: 'ViewContainer', selectorKind: 'none', selector: '',
+      condProps: {}, setVisible: '', setProps: { backgroundColor: '$color' },
+    };
+    this.operations.push({
+      id: `op_${++this.opCounter}`, name: 'changeBackgroundColor',
+      nodes: [
+        { id: 'n1', x: 60, y: 40, w: 200, h: 80, data: cbParams },
+        { id: 'n2', x: 60, y: 150, w: 240, h: 96, data: cbTarget },
+      ],
+      edges: [], params: ['color'],
+    });
+
     this.loadOperation(this.operations[0].id);
     this.publishModels();
   }
@@ -316,6 +339,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     op.nodes = nodes;
     op.edges = edges;
+    op.params = this.collectParams(nodes);
   }
 
   private loadOperation(id: string): void {
@@ -432,7 +456,81 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
       condProps: {},
       setVisible: '',
       setProps: {},
+      ...(kind === 'params' ? { params: [] } : {}),
     };
+  }
+
+  // --- transformation parameters (the 'params' metaproperties box) ---
+
+  /** Distinct parameter names declared across the current operation's params boxes. */
+  get declaredParams(): string[] {
+    const out: string[] = [];
+    this.nodeData.forEach((d) => {
+      if (d.kind === 'params' && d.params) {
+        for (const p of d.params) {
+          if (p && out.indexOf(p) < 0) { out.push(p); }
+        }
+      }
+    });
+    return out;
+  }
+
+  /** Adds the typed parameter name to the selected params box. */
+  addParam(): void {
+    const name = this.newParam.trim();
+    const n = this.selectedNode;
+    if (!name || !n || n.kind !== 'params') {
+      return;
+    }
+    if (!n.params) { n.params = []; }
+    if (n.params.indexOf(name) < 0) { n.params.push(name); }
+    this.newParam = '';
+    this.onNodeChange();
+  }
+
+  /** Removes a parameter from the selected params box. */
+  removeParam(name: string): void {
+    const n = this.selectedNode;
+    if (!n || !n.params) {
+      return;
+    }
+    n.params = n.params.filter((p) => p !== name);
+    this.onNodeChange();
+  }
+
+  /** The parameter bound to a property's RHS value (a `$name` setProps value), or ''. */
+  paramBinding(def: StylePropDef): string {
+    const v = this.selectedNode?.setProps?.[def.key] ?? '';
+    const m = /^\$(.+)$/.exec(v);
+    return m ? m[1] : '';
+  }
+
+  /** Binds (or unbinds) a property's RHS value to a transformation parameter. */
+  setParamBinding(def: StylePropDef, param: string): void {
+    const n = this.selectedNode;
+    if (!n) {
+      return;
+    }
+    if (n.condProps) { delete n.condProps[def.key]; }   // a binding is an RHS 'set'
+    if (param) {
+      n.setProps[def.key] = `$${param}`;
+    } else {
+      delete n.setProps[def.key];
+    }
+    this.onNodeChange();
+  }
+
+  /** Collects the operation's parameter signature from its params boxes. */
+  private collectParams(nodes: OpNode[]): string[] {
+    const out: string[] = [];
+    for (const node of nodes) {
+      if (node.data.kind === 'params' && node.data.params) {
+        for (const p of node.data.params) {
+          if (p && out.indexOf(p) < 0) { out.push(p); }
+        }
+      }
+    }
+    return out;
   }
 
   // --- style-property catalog for the RHS assignment panel ---
@@ -576,6 +674,9 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   // --------------------------------------------------------------------------
 
   private styleFor(data: PatternNodeData): string {
+    if (data.kind === 'params') {
+      return 'shape=rectangle;rounded=1;dashed=1;fillColor=#ede7f6;strokeColor=#5e35b1;strokeWidth=1.5;fontColor=#4527a0;fontSize=11;whiteSpace=wrap;';
+    }
     const c = ROLE_COLORS[data.role] || ROLE_COLORS['preserve'];
     const rounded = data.kind === 'style' ? 'rounded=1;' : 'rounded=0;';
     const dashed = data.role === 'delete' || data.role === 'forbid' ? 'dashed=1;' : '';
@@ -589,6 +690,10 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private nodeLabel(data: PatternNodeData): string {
+    if (data.kind === 'params') {
+      const ps = (data.params || []).filter(Boolean);
+      return `⟨ parameters ⟩${ps.length ? '\n' + ps.join(', ') : '\n(none yet)'}`;
+    }
     const head = data.kind === 'style' ? 'Style' : (data.match === 'any' ? 'Element' : data.match);
     let sel = '';
     if (data.selectorKind === 'class' && data.selector) {
@@ -623,6 +728,12 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     lines.push('<op:OperationModel xmlns:op="http://adaptui.org/operations/1.0" name="AdaptUI Operations">');
     for (const op of this.operations) {
       lines.push(`  <operation name="${this.esc(op.name)}">`);
+      const params = this.collectParams(op.nodes);
+      if (params.length) {
+        lines.push('    <parameters>');
+        for (const pn of params) { lines.push(`      <parameter name="${this.esc(pn)}"/>`); }
+        lines.push('    </parameters>');
+      }
       // LHS = preserve + delete + create-with-conditions; RHS = preserve + create; NAC = forbid.
       this.appendSide(lines, op, 'lhs', (n) => n.data.role === 'preserve' || n.data.role === 'delete' || (n.data.role === 'create' && this.hasConds(n.data)), (e) => e.data.role === 'preserve' || e.data.role === 'delete');
       this.appendSide(lines, op, 'rhs', (n) => n.data.role === 'preserve' || n.data.role === 'create', (e) => e.data.role === 'preserve' || e.data.role === 'create');
@@ -642,7 +753,7 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     keepNode: (n: OpNode) => boolean, keepEdge: (e: OpEdge) => boolean,
   ): void {
     lines.push(`    <${side}>`);
-    for (const node of op.nodes.filter(keepNode)) {
+    for (const node of op.nodes.filter((n) => n.data.kind !== 'params' && keepNode(n))) {
       const attrs = this.nodeMatchAttrs(node);
       // LHS nodes carry attribute conditions; RHS nodes carry assignments.
       const children = side === 'rhs' ? this.nodeSets(node) : (side === 'lhs' ? this.nodeConds(node) : []);
@@ -680,7 +791,10 @@ export class OperationMlComponent implements OnInit, AfterViewInit, OnDestroy {
     for (const def of STYLE_PROPERTIES) {
       const v = d.setProps?.[def.key];
       if (v !== undefined && v !== '') {
-        out.push(`<set property="${def.key}" value="${this.esc(v)}"/>`);
+        const pm = /^\$(.+)$/.exec(v);
+        out.push(pm
+          ? `<set property="${def.key}" parameter="${this.esc(pm[1])}"/>`
+          : `<set property="${def.key}" value="${this.esc(v)}"/>`);
       }
     }
     return out;

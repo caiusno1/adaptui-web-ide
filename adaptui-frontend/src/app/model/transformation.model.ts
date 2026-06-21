@@ -186,7 +186,7 @@ export function lifecycleEventName(container: string, kind: string): string {
   return `${container} · ${kind}`;
 }
 
-export type PatternNodeKind = 'element' | 'style';
+export type PatternNodeKind = 'element' | 'style' | 'params';
 export type ElementMatch = 'any' | 'ViewContainer' | 'ViewComponent' | 'Event';
 export type PatternSelectorKind = 'none' | 'class' | 'id';
 
@@ -210,9 +210,16 @@ export interface PatternNodeData {
   /**
    * RHS style-property assignments applied to the matched element, keyed by
    * `StylePropDef.key` (same catalog as the Style DSL). Empty value = unchanged.
-   * Lets operations change any element property, e.g. dark-mode colours.
+   * Lets operations change any element property, e.g. dark-mode colours. A value
+   * of the form `$name` binds the assignment to the transformation parameter
+   * `name`, whose value is supplied where the operation is invoked.
    */
   setProps: Record<string, string>;
+  /**
+   * Declared parameter names — only meaningful for a `params` (transformation
+   * parameters) box. The operation's signature is the union of these.
+   */
+  params?: string[];
 }
 
 /** A pattern edge between two pattern nodes. */
@@ -244,6 +251,8 @@ export interface OperationModel {
   name: string;
   nodes: OpNode[];
   edges: OpEdge[];
+  /** Parameter names declared by the operation's `params` boxes (its signature). */
+  params?: string[];
 }
 
 export const RELATION_KINDS = ['contains', 'navigatesTo', 'styles'];

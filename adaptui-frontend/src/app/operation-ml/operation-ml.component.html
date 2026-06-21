@@ -42,67 +42,106 @@
 
     <!-- Pattern-node configuration -->
     <div class="config-panel" *ngIf="selectedNode as n">
-      <h4>Pattern node</h4>
-      <label class="field">
-        <span>Role</span>
-        <select [(ngModel)]="n.role" (ngModelChange)="onNodeChange()">
-          <option *ngFor="let r of roles" [value]="r">{{ r }}</option>
-        </select>
-      </label>
-      <label class="field" *ngIf="n.kind === 'element'">
-        <span>Match type</span>
-        <select [(ngModel)]="n.match" (ngModelChange)="onNodeChange()">
-          <option *ngFor="let m of matches" [value]="m">{{ m }}</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Selector</span>
-        <select [(ngModel)]="n.selectorKind" (ngModelChange)="onNodeSelectorKindChange()">
-          <option *ngFor="let sk of selectorKinds" [value]="sk">{{ sk }}</option>
-        </select>
-      </label>
-      <label class="field" *ngIf="n.selectorKind !== 'none'">
-        <span>{{ n.selectorKind === 'id' ? 'Element' : 'Class' }}</span>
-        <select [(ngModel)]="n.selector" (ngModelChange)="onNodeChange()">
-          <option value="" disabled>— choose —</option>
-          <option *ngFor="let o of selectorOptions" [value]="o">{{ o }}</option>
-        </select>
-      </label>
 
-      <ng-container *ngIf="showAssignments">
-        <div class="assign-head">Attributes — <b>Match</b> (LHS condition, all must hold) or <b>Set</b> (overwrite on RHS)</div>
-        <label class="field" *ngIf="n.kind === 'element'">
-          <span>Visibility</span>
-          <select [(ngModel)]="n.setVisible" (ngModelChange)="onNodeChange()">
-            <option value="">— unchanged —</option>
-            <option value="true">visible</option>
-            <option value="false">invisible</option>
+      <!-- Transformation-parameters box (metaproperties) -->
+      <ng-container *ngIf="n.kind === 'params'">
+        <h4>Transformation parameters</h4>
+        <p class="params-hint">
+          Declare the operation's parameters, then bind one to an attribute value via the
+          <b>= param</b> selector on a «preserve»/«create» node's <b>Set</b> attribute. Values are
+          supplied where the operation is used (ADAPTML rule / DSL).
+        </p>
+        <div class="param-list">
+          <span class="param-chip" *ngFor="let p of (n.params || [])">
+            {{ p }}<button type="button" (click)="removeParam(p)" title="Remove parameter">✕</button>
+          </span>
+          <span class="param-empty" *ngIf="!(n.params && n.params.length)">No parameters yet.</span>
+        </div>
+        <label class="field">
+          <span>Add parameter</span>
+          <span class="param-add">
+            <input type="text" [(ngModel)]="newParam" (keyup.enter)="addParam()" placeholder="e.g. color">
+            <button type="button" (click)="addParam()" title="Add"><mat-icon>add</mat-icon></button>
+          </span>
+        </label>
+      </ng-container>
+
+      <!-- Element / Style pattern node -->
+      <ng-container *ngIf="n.kind !== 'params'">
+        <h4>Pattern node</h4>
+        <label class="field">
+          <span>Role</span>
+          <select [(ngModel)]="n.role" (ngModelChange)="onNodeChange()">
+            <option *ngFor="let r of roles" [value]="r">{{ r }}</option>
           </select>
         </label>
-        <div class="style-group" *ngFor="let g of styleGroups">
-          <h5 class="group-title">{{ g }}</h5>
-          <label class="field prop-field" *ngFor="let def of propsInGroup(g)" [ngSwitch]="def.input"
-                 [class.is-match]="nodePropMode(def) === 'match'">
-            <span class="prop-label">
-              {{ def.label }}
-              <select class="mode-sel" [ngModel]="nodePropMode(def)" (ngModelChange)="setNodePropMode(def, $event)"
-                      (click)="$event.preventDefault()" title="Match = LHS condition; Set = RHS overwrite">
-                <option value="set">set</option>
-                <option value="match">match</option>
-              </select>
-            </span>
-            <span class="color-row" *ngSwitchCase="'color'">
-              <input type="color" [ngModel]="propNodeValue(def)" (ngModelChange)="setNodeProp(def, $event)">
-              <input type="text" class="color-text" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" placeholder="—">
-            </span>
-            <input *ngSwitchCase="'number'" type="number" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" [placeholder]="def.placeholder || '—'">
-            <input *ngSwitchCase="'text'" type="text" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" [placeholder]="def.placeholder || '—'">
-            <select *ngSwitchCase="'select'" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)">
-              <option value="">—</option>
-              <option *ngFor="let o of def.options" [value]="o.value">{{ o.label }}</option>
+        <label class="field" *ngIf="n.kind === 'element'">
+          <span>Match type</span>
+          <select [(ngModel)]="n.match" (ngModelChange)="onNodeChange()">
+            <option *ngFor="let m of matches" [value]="m">{{ m }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Selector</span>
+          <select [(ngModel)]="n.selectorKind" (ngModelChange)="onNodeSelectorKindChange()">
+            <option *ngFor="let sk of selectorKinds" [value]="sk">{{ sk }}</option>
+          </select>
+        </label>
+        <label class="field" *ngIf="n.selectorKind !== 'none'">
+          <span>{{ n.selectorKind === 'id' ? 'Element' : 'Class' }}</span>
+          <select [(ngModel)]="n.selector" (ngModelChange)="onNodeChange()">
+            <option value="" disabled>— choose —</option>
+            <option *ngFor="let o of selectorOptions" [value]="o">{{ o }}</option>
+          </select>
+        </label>
+
+        <ng-container *ngIf="showAssignments">
+          <div class="assign-head">Attributes — <b>Match</b> (LHS condition, all must hold) or <b>Set</b> (overwrite on RHS)</div>
+          <label class="field" *ngIf="n.kind === 'element'">
+            <span>Visibility</span>
+            <select [(ngModel)]="n.setVisible" (ngModelChange)="onNodeChange()">
+              <option value="">— unchanged —</option>
+              <option value="true">visible</option>
+              <option value="false">invisible</option>
             </select>
           </label>
-        </div>
+          <div class="style-group" *ngFor="let g of styleGroups">
+            <h5 class="group-title">{{ g }}</h5>
+            <label class="field prop-field" *ngFor="let def of propsInGroup(g)"
+                   [class.is-match]="nodePropMode(def) === 'match'">
+              <span class="prop-label">
+                {{ def.label }}
+                <select class="mode-sel" [ngModel]="nodePropMode(def)" (ngModelChange)="setNodePropMode(def, $event)"
+                        (click)="$event.preventDefault()" title="Match = LHS condition; Set = RHS overwrite">
+                  <option value="set">set</option>
+                  <option value="match">match</option>
+                </select>
+              </span>
+
+              <!-- Bind the RHS value to a transformation parameter (set mode only) -->
+              <select class="param-sel" *ngIf="declaredParams.length && nodePropMode(def) === 'set'"
+                      [ngModel]="paramBinding(def)" (ngModelChange)="setParamBinding(def, $event)"
+                      title="Bind this attribute's value to a transformation parameter">
+                <option value="">literal…</option>
+                <option *ngFor="let p of declaredParams" [value]="p">= {{ p }}</option>
+              </select>
+
+              <!-- Literal value editors (hidden when bound to a parameter) -->
+              <ng-container *ngIf="!paramBinding(def)" [ngSwitch]="def.input">
+                <span class="color-row" *ngSwitchCase="'color'">
+                  <input type="color" [ngModel]="propNodeValue(def)" (ngModelChange)="setNodeProp(def, $event)">
+                  <input type="text" class="color-text" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" placeholder="—">
+                </span>
+                <input *ngSwitchCase="'number'" type="number" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" [placeholder]="def.placeholder || '—'">
+                <input *ngSwitchCase="'text'" type="text" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)" [placeholder]="def.placeholder || '—'">
+                <select *ngSwitchCase="'select'" [ngModel]="rawNodeProp(def)" (ngModelChange)="setNodeProp(def, $event)">
+                  <option value="">—</option>
+                  <option *ngFor="let o of def.options" [value]="o.value">{{ o.label }}</option>
+                </select>
+              </ng-container>
+            </label>
+          </div>
+        </ng-container>
       </ng-container>
     </div>
 
