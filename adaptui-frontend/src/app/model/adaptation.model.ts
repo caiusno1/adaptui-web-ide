@@ -103,9 +103,11 @@ export interface ConditionConfig {
   value: string;
 }
 
-/** An operation reference: the name of an operation defined in the Operations tab. */
+/** An operation reference: the name of an operation defined in the Operations tab,
+ *  plus argument values for its parameters (keyed by parameter name). */
 export interface OperationConfig {
   operationName: string;
+  args?: Record<string, string>;
 }
 
 export type AdaptNodeKind = 'condition' | 'operation' | 'gate';
@@ -139,4 +141,6 @@ export type BoolExpr =
 export interface AdaptmlRule {
   expr: BoolExpr | null;
   operationName: string;
+  /** Argument values for the operation's parameters, keyed by parameter name. */
+  args?: Record<string, string>;
 }

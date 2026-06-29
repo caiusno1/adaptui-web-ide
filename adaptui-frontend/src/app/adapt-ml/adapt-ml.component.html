@@ -85,11 +85,19 @@
               </div>
               <label class="field" *ngIf="operationNames.length > 0">
                 <span>Operation</span>
-                <select [(ngModel)]="o.operationName" (ngModelChange)="onConfigChange()">
+                <select [(ngModel)]="o.operationName" (ngModelChange)="onOperationChange()">
                   <option value="" disabled>— choose —</option>
                   <option *ngFor="let name of operationNames" [value]="name">{{ name }}</option>
                 </select>
               </label>
+              <!-- Arguments for the operation's parameters -->
+              <label class="field" *ngFor="let p of selectedOpParams">
+                <span>{{ p }}</span>
+                <input type="text" [ngModel]="argValue(p)" (ngModelChange)="setArg(p, $event)" [placeholder]="'value for ' + p">
+              </label>
+              <div class="params-note" *ngIf="selectedOpParams.length">
+                Parameterized operation — supply a value for each parameter.
+              </div>
             </ng-container>
           </div>
         </aside>

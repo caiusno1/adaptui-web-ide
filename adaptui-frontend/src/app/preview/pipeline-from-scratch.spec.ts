@@ -133,6 +133,28 @@ describe('AdaptUI pipeline rebuilt from scratch', () => {
     expect(night.backgroundColor).toBe('#0f172a');                   // darkMode operation applied at night
   });
 
+  // --- Parameterized operation: changeBackgroundColor(color) --------------
+
+  it('applies a parameterized operation, substituting the supplied argument', () => {
+    const changeBg: OperationModel = {
+      id: 'op_param', name: 'changeBackgroundColor', params: ['color'],
+      nodes: [
+        { id: 'p1', x: 0, y: 0, w: 0, h: 0, data: { kind: 'params', role: 'preserve', match: 'any', selectorKind: 'none', selector: '', condProps: {}, setVisible: '', setProps: {}, params: ['color'] } },
+        { id: 'n1', x: 0, y: 0, w: 0, h: 0, data: { kind: 'element', role: 'preserve', match: 'ViewContainer', selectorKind: 'none', selector: '', condProps: {}, setVisible: '', setProps: { backgroundColor: '$color' } } },
+      ],
+      edges: [],
+    };
+    const rule: AdaptmlRule = {
+      expr: { type: 'condition', condition: { propertyKey: 'time', operator: '>=', value: '1' } },
+      operationName: 'changeBackgroundColor',
+      args: { color: '#abcdef' },
+    };
+    const host = runAdaptation(buildHostGraph(elements, flows, styles), [rule], [changeBg], ctx('9'));
+    const views = buildRenderTree(host);
+    expect(views.find((v) => v.name === 'News Feed')!.backgroundColor).toBe('#abcdef');
+    expect(views.find((v) => v.name === 'Login')!.backgroundColor).toBe('#abcdef');
+  });
+
   // --- The service layer publishes exactly what the engine consumes -------
 
   it('authoring through the model services feeds the same render', () => {

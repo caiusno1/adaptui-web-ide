@@ -465,6 +465,17 @@ element, and the engine applies all matches of every rule **repeatedly to a fixp
 (so operations that enable one another all take effect); each concrete match is applied
 once per recompute, so add-nodes create exactly once.
 
+**Parameterized operations.** Add a **Parameters** box (the third palette item) to declare
+named parameters, e.g. `color`. Then, on a «preserve»/«create» node's **Set** attribute, use
+the **= param** selector to bind that attribute's RHS value to a parameter instead of a
+literal — e.g. `changeBackgroundColor(color)`: a preserved *ViewContainer* whose *Background*
+is `= color`. The value is supplied **where the operation is invoked**: the ADAPTML operation
+node shows a field per parameter, and the textual DSL takes `then changeBackgroundColor(#ff0000)`
+(positional) or `then changeBackgroundColor(color=#ff0000)` (named). The engine substitutes the
+argument into the RHS before applying; an omitted argument leaves that attribute unset.
+(Parameters export in a `<parameters>` section, and bound assignments as
+`<set property="…" parameter="…"/>`.)
+
 **Export Operations XML** (`model.operations`) derives an explicit `<lhs>`/`<rhs>` —
 LHS nodes carry `<cond>` attribute conditions, RHS nodes carry `<set>` assignments:
 
@@ -615,14 +626,17 @@ panel is opened). The DSL is one rule per line:
 ```
 when time >= 20 then Dark surfaces, Dark text
 when age > 50 and environment == outdoor then largeText
-when deviceType == phone or deviceType == tablet then mobileLayout
+when deviceType == phone then changeBackgroundColor(#0f172a)
 ```
 
 A condition is `<contextKey> <operator> <value>`; combine conditions with `and` / `or` and
 group with parentheses (`and` binds tighter than `or`). **One condition can drive several
 actions** — list them after `then`, comma-separated (`then Dark surfaces, Dark text`), the
 same as drawing arrows from a single Condition to several Operations in the graphical editor.
-`# …` and `// …` are comments. The
+A **parameterized** operation takes arguments in parentheses — positional
+`changeBackgroundColor(#0f172a)` or named `changeBackgroundColor(color=#0f172a)`. A line
+beginning with `#` is a comment, and `//` starts a comment anywhere (so inline hex colours
+survive). The
 editor is built on **CodeMirror 6** and provides syntax highlighting and context-aware
 completion (<kbd>Ctrl</kbd>+<kbd>Space</kbd>): keywords and *activated* context-property keys
 in the condition part, and the defined operation names after `then`. Edits parse live with a

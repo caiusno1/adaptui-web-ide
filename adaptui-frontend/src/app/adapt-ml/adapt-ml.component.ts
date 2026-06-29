@@ -74,6 +74,8 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   // Live, cross-tab data driving the configuration panel.
   activatedContext: ContextProperty[] = [];
   operationNames: string[] = [];
+  /** Operation name → its declared parameter names (signature), for arg inputs and the DSL. */
+  opParams = new Map<string, string[]>();
 
   // --- Textual DSL ⇄ graphical mode ---
   /** Which editor is shown: the graphical canvas or the textual DSL. */
@@ -111,8 +113,11 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     );
     // Operations come from both the modelled (Operations tab) and code (Code tab) sources.
     this.subscriptions.add(
-      combineLatest([this.operationService.names$, this.codeService.operationNames$]).subscribe(
-        ([modelled, code]) => { this.operationNames = [...modelled, ...code]; }
+      combineLatest([this.operationService.models$, this.codeService.operationNames$]).subscribe(
+        ([models, code]) => {
+          this.operationNames = [...models.map((m) => m.name), ...code];
+          this.opParams = new Map(models.map((m) => [m.name, m.params || []]));
+        }
       )
     );
   }
@@ -541,6 +546,50 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
     return this.contextService.getProperty(key)?.label ?? key;
   }
 
+  // --- operation parameters / arguments (invocation side) ---
+
+  /** Operation name → ordered parameter names, for the DSL's positional arguments. */
+  get opSignatures(): Record<string, string[]> {
+    const sig: Record<string, string[]> = {};
+    this.opParams.forEach((params, name) => { sig[name] = params; });
+    return sig;
+  }
+
+  /** Parameters of the operation referenced by the selected operation node. */
+  get selectedOpParams(): string[] {
+    const name = this.selectedData?.operation?.operationName;
+    return name ? (this.opParams.get(name) || []) : [];
+  }
+
+  /** Current argument value supplied for a parameter on the selected operation node. */
+  argValue(param: string): string {
+    return this.selectedData?.operation?.args?.[param] ?? '';
+  }
+
+  /** Sets an argument value for a parameter on the selected operation node. */
+  setArg(param: string, value: string): void {
+    const op = this.selectedData?.operation;
+    if (!op) {
+      return;
+    }
+    if (!op.args) { op.args = {}; }
+    if (value === '' || value == null) {
+      delete op.args[param];
+    } else {
+      op.args[param] = value;
+    }
+    this.onConfigChange();
+  }
+
+  /** When the referenced operation changes, drop arguments bound to the old signature. */
+  onOperationChange(): void {
+    const op = this.selectedData?.operation;
+    if (op) {
+      op.args = {};
+    }
+    this.onConfigChange();
+  }
+
   private labelFor(data: AdaptNodeData): string {
     if (data.kind === 'condition' && data.condition) {
       const c = data.condition;
@@ -550,7 +599,10 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
       return `${this.contextLabel(c.propertyKey)} ${c.operator} ${c.value === '' ? '?' : c.value}`;
     }
     if (data.kind === 'operation' && data.operation) {
-      return `apply: ${data.operation.operationName || '?'}`;
+      const name = data.operation.operationName || '?';
+      const args = data.operation.args || {};
+      const present = (this.opParams.get(name) || []).filter((p) => args[p] !== undefined && args[p] !== '');
+      return `apply: ${name}${present.length ? `(${present.map((p) => args[p]).join(', ')})` : ''}`;
     }
     if (data.kind === 'gate' && data.gate) {
       return `«${data.gate.op.toUpperCase()}»`;
@@ -584,7 +636,7 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
         continue;
       }
       const expr = this.buildExpr(cell, 'and', new Set<string>());
-      rules.push({ expr, operationName: opData.operation.operationName });
+      rules.push({ expr, operationName: opData.operation.operationName, args: opData.operation.args });
     }
     return rules;
   }
@@ -639,7 +691,7 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   private syncFromGraph(): void {
     this.publishRules();
     if (this.mode === 'graph') {
-      this.dslText = serializeAdaptmlRules(this.gatherRules());
+      this.dslText = serializeAdaptmlRules(this.gatherRules(), this.opSignatures);
     }
   }
 
@@ -663,8 +715,8 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     this.mode = 'text';
-    this.dslText = serializeAdaptmlRules(this.gatherRules());
-    this.lastParsedRules = parseAdaptmlDsl(this.dslText).rules;
+    this.dslText = serializeAdaptmlRules(this.gatherRules(), this.opSignatures);
+    this.lastParsedRules = parseAdaptmlDsl(this.dslText, this.opSignatures).rules;
     this.dslErrors = [];
     this.dslDirty = false;
     setTimeout(() => this.dslEditor?.refresh());
@@ -673,7 +725,7 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
   /** Live edit of the DSL: parse, surface diagnostics and publish the valid rules. */
   onDslTextChange(text: string): void {
     this.dslText = text;
-    const parsed = parseAdaptmlDsl(text);
+    const parsed = parseAdaptmlDsl(text, this.opSignatures);
     this.dslErrors = parsed.errors.map((e) => `Line ${e.line}: ${e.message}`);
     this.lastParsedRules = parsed.rules;
     this.dslDirty = true;
@@ -727,8 +779,9 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
       return { cell, y };
     };
 
-    // Group rules sharing a condition so one condition node feeds all its operations.
-    const groups: { expr: BoolExpr; ops: string[] }[] = [];
+    // Group rules sharing a condition so one condition node feeds all its operations
+    // (each action keeps its own arguments).
+    const groups: { expr: BoolExpr; actions: { name: string; args?: Record<string, string> }[] }[] = [];
     for (const rule of rules) {
       if (!rule.expr || !rule.operationName) {
         continue;
@@ -736,11 +789,12 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
       const key = JSON.stringify(rule.expr);
       let group = groups.find((g) => JSON.stringify(g.expr) === key);
       if (!group) {
-        group = { expr: rule.expr, ops: [] };
+        group = { expr: rule.expr, actions: [] };
         groups.push(group);
       }
-      if (!group.ops.includes(rule.operationName)) {
-        group.ops.push(rule.operationName);
+      const akey = `${rule.operationName}#${JSON.stringify(rule.args || {})}`;
+      if (!group.actions.some((a) => `${a.name}#${JSON.stringify(a.args || {})}` === akey)) {
+        group.actions.push({ name: rule.operationName, args: rule.args });
       }
     }
 
@@ -755,8 +809,8 @@ export class AdaptMlComponent implements OnInit, AfterViewInit, OnDestroy {
         const condBottom = yCursor;
         // Stack the operation nodes on the right, each fed by the shared condition.
         let opY = bandTop;
-        for (const opName of group.ops) {
-          const opCell = mk({ kind: 'operation', operation: { operationName: opName } }, 'operationStyle', OP_X, opY, 210, 72);
+        for (const action of group.actions) {
+          const opCell = mk({ kind: 'operation', operation: { operationName: action.name, args: action.args } }, 'operationStyle', OP_X, opY, 210, 72);
           graph.insertEdge(parent, null, '', root.cell, opCell);
           opY += ROW_H;
         }

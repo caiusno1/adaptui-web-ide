@@ -19,26 +19,45 @@ const PREC: Record<GateOp, number> = { or: 1, and: 2 };
 // Serialize: rules -> text
 // ---------------------------------------------------------------------------
 
-/** Renders adaptation rules to DSL text, grouping rules that share a condition
- *  so one line can activate several actions (`when <cond> then <op1>, <op2>`).
+/** A map of operation name → ordered parameter names, used to read/write positional args. */
+export type OperationSignatures = Record<string, string[]>;
+
+/** Renders adaptation rules to DSL text, grouping rules that share a condition so one
+ *  line can activate several actions, each optionally carrying arguments, e.g.
+ *  `when time >= 20 then changeBackgroundColor(#0f172a), Dark text`.
  *  Condition-less rules never fire, so are omitted. */
-export function serializeAdaptmlRules(rules: AdaptmlRule[]): string {
-  const groups: { condition: string; ops: string[] }[] = [];
+export function serializeAdaptmlRules(rules: AdaptmlRule[], signatures?: OperationSignatures): string {
+  const groups: { condition: string; actions: string[] }[] = [];
   for (const r of rules) {
     if (!r.expr || !r.operationName) {
       continue;
     }
     const condition = exprToText(r.expr);
+    const action = actionToText(r.operationName, r.args, signatures);
     let group = groups.find((g) => g.condition === condition);
     if (!group) {
-      group = { condition, ops: [] };
+      group = { condition, actions: [] };
       groups.push(group);
     }
-    if (!group.ops.includes(r.operationName)) {
-      group.ops.push(r.operationName);
+    if (!group.actions.includes(action)) {
+      group.actions.push(action);
     }
   }
-  return groups.map((g) => `when ${g.condition} then ${g.ops.join(', ')}`).join('\n');
+  return groups.map((g) => `when ${g.condition} then ${g.actions.join(', ')}`).join('\n');
+}
+
+/** Renders an action: `op`, `op(v1, v2)` (positional, via signature) or `op(k=v)` (named). */
+function actionToText(op: string, args: Record<string, string> | undefined, sig?: OperationSignatures): string {
+  const a = args || {};
+  const keys = Object.keys(a).filter((k) => a[k] !== '' && a[k] != null);
+  if (keys.length === 0) {
+    return op;
+  }
+  const params = sig?.[op];
+  if (params && params.length && params.every((p) => a[p] !== undefined && a[p] !== '')) {
+    return `${op}(${params.map((p) => a[p]).join(', ')})`;
+  }
+  return `${op}(${keys.map((k) => `${k}=${a[k]}`).join(', ')})`;
 }
 
 function exprToText(e: BoolExpr): string {
@@ -71,7 +90,7 @@ export interface DslParseResult {
 }
 
 /** Parses DSL text into rules, collecting a diagnostic per malformed line. */
-export function parseAdaptmlDsl(text: string): DslParseResult {
+export function parseAdaptmlDsl(text: string, signatures?: OperationSignatures): DslParseResult {
   const rules: AdaptmlRule[] = [];
   const errors: DslParseError[] = [];
   text.split('\n').forEach((raw, i) => {
@@ -80,7 +99,7 @@ export function parseAdaptmlDsl(text: string): DslParseResult {
       return;
     }
     try {
-      rules.push(...parseRuleLine(line));
+      rules.push(...parseRuleLine(line, signatures));
     } catch (e) {
       errors.push({ line: i + 1, message: (e as Error).message });
     }
@@ -89,16 +108,18 @@ export function parseAdaptmlDsl(text: string): DslParseResult {
 }
 
 function stripComment(s: string): string {
-  let cut = -1;
-  const hash = s.indexOf('#');
-  const slashes = s.indexOf('//');
-  if (hash >= 0) { cut = hash; }
-  if (slashes >= 0 && (cut < 0 || slashes < cut)) { cut = slashes; }
-  return cut >= 0 ? s.slice(0, cut) : s;
+  // A line starting with '#' is a full-line comment, and '//' starts a comment
+  // anywhere. '#' is NOT a comment mid-line, so hex colours (e.g. #abcdef in an
+  // argument) survive.
+  if (/^\s*#/.test(s)) {
+    return '';
+  }
+  const i = s.indexOf('//');
+  return i >= 0 ? s.slice(0, i) : s;
 }
 
 /** Parses one `when … then …` line into one rule per (comma-separated) action. */
-function parseRuleLine(line: string): AdaptmlRule[] {
+function parseRuleLine(line: string, sig?: OperationSignatures): AdaptmlRule[] {
   const m = /^when\b([\s\S]*?)\bthen\b([\s\S]*)$/i.exec(line);
   if (!m) {
     if (!/^when\b/i.test(line)) {
@@ -110,13 +131,51 @@ function parseRuleLine(line: string): AdaptmlRule[] {
   if (!exprStr) {
     throw new Error('missing a condition after "when"');
   }
-  // One or more comma-separated actions may follow `then`.
-  const ops = m[2].split(',').map((o) => o.trim()).filter((o) => o.length > 0);
-  if (ops.length === 0) {
+  const actions = splitActions(m[2]);
+  if (actions.length === 0) {
     throw new Error('missing an operation name after "then"');
   }
   const expr = parseExpr(exprStr);
-  return ops.map((operationName) => ({ expr, operationName }));
+  return actions.map((action) => parseAction(action, expr, sig));
+}
+
+/** Splits the `then` part into actions on top-level commas (commas inside `(...)` are kept). */
+function splitActions(s: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of s) {
+    if (ch === '(') { depth++; cur += ch; }
+    else if (ch === ')') { depth = Math.max(0, depth - 1); cur += ch; }
+    else if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; }
+    else { cur += ch; }
+  }
+  parts.push(cur);
+  return parts.map((p) => p.trim()).filter((p) => p.length > 0);
+}
+
+/** Parses a single action: `op`, `op(v1, v2)` (positional) or `op(k=v, …)` (named). */
+function parseAction(action: string, expr: BoolExpr, sig?: OperationSignatures): AdaptmlRule {
+  const m = /^([^(]+?)\s*(?:\(([\s\S]*)\))?\s*$/.exec(action);
+  if (!m || !m[1].trim()) {
+    throw new Error(`invalid action "${action}"`);
+  }
+  const operationName = m[1].trim();
+  const argsStr = m[2];
+  if (argsStr === undefined || argsStr.trim() === '') {
+    return { expr, operationName };
+  }
+  const args: Record<string, string> = {};
+  const params = sig?.[operationName] || [];
+  argsStr.split(',').map((x) => x.trim()).filter((x) => x.length > 0).forEach((ap, i) => {
+    const eq = ap.indexOf('=');
+    if (eq >= 0) {
+      args[ap.slice(0, eq).trim()] = ap.slice(eq + 1).trim();   // named
+    } else if (params[i] !== undefined) {
+      args[params[i]] = ap;                                     // positional via signature
+    }
+  });
+  return { expr, operationName, args };
 }
 
 type TokType = 'lparen' | 'rparen' | 'and' | 'or' | 'op' | 'ident' | 'num';
